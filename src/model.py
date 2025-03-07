@@ -61,8 +61,8 @@ print("Features engineered")
 future_days = 5  # Look ahead 5 days
 for stock in ["MNST", "KO"]:
     data[f"{stock}_Future_Price"] = data[stock].shift(-future_days)
-    data[f"{stock}_Target"] = np.where(data[f"{stock}_Future_Price"] > data[stock] * 1.02, 1,  # Buy
-                             np.where(data[f"{stock}_Future_Price"] < data[stock] * 0.98, -1,  # Sell
+    data[f"{stock}_Target"] = np.where(data[f"{stock}_Future_Price"] > data[stock] * 1.01, 1,  # Buy
+                             np.where(data[f"{stock}_Future_Price"] < data[stock] * 0.99, -1,  # Sell
                              0))  # Hold
 
 # Combine targets into a single column
