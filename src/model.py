@@ -1,12 +1,11 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, accuracy_score
 import os
 from collections import Counter
 
-#DATA PREPROCESSING===============================================================================================================================================================================================
 # Function to load data with error handling
 def load_data(file_path, sheet_name):
     if not os.path.exists(file_path):
@@ -73,6 +72,14 @@ print("Target variable defined")
 print("Training and testing data...")
 features = ["PBJ", "XLP", "SPX", "XLP_MA7", "PBJ_MA30"]
 
+# Hyperparameter tuning
+param_grid = {
+    'n_estimators': [50, 100, 200],
+    'max_depth': [None, 10, 20, 30],
+    'min_samples_split': [2, 5, 10],
+    'min_samples_leaf': [1, 2, 4]
+}
+
 # Train a model for each stock
 models = {}
 for stock in ["MNST", "KO"]:
@@ -82,18 +89,25 @@ for stock in ["MNST", "KO"]:
     # Split data
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
-    # Train model
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
-    model.fit(X_train, y_train)
+    # Initialize model
+    rf = RandomForestClassifier(random_state=42)
+    
+    # Perform grid search
+    grid_search = GridSearchCV(estimator=rf, param_grid=param_grid, cv=3, n_jobs=-1, verbose=2)
+    grid_search.fit(X_train, y_train)
+    
+    # Get the best model
+    best_model = grid_search.best_estimator_
     
     # Evaluate
-    y_pred = model.predict(X_test)
+    y_pred = best_model.predict(X_test)
     print(f"Model for {stock}:")
+    print("Best Parameters:", grid_search.best_params_)
     print("Accuracy:", accuracy_score(y_test, y_pred))
     print("Classification Report:\n", classification_report(y_test, y_pred))
     
     # Save model
-    models[stock] = model
+    models[stock] = best_model
 print("Models trained and tested")
 #PREDICTING===============================================================================================================================================================================================
 def predict_stock_signal(new_stock_data, models, indicators, stock_type):
