@@ -3,11 +3,11 @@ import numpy as np
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, accuracy_score
+from sklearn.preprocessing import StandardScaler
 import os
 from collections import Counter
 
-# Data preprocessing =============================================================================================================================================================================================
-# Function to load data
+# Function to load data with error handling
 def load_data(file_path, sheet_name):
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
@@ -41,7 +41,7 @@ data = pd.concat([xlp["PX_LAST"], pbj["PX_LAST"], spx["PX_LAST"], mnst["PX_LAST"
                  axis=1, keys=["XLP", "PBJ", "SPX", "MNST", "KO"])
 data = data.dropna()
 print("Data loaded and cleaned")
-# Feature engineering =============================================================================================================================================================================================
+
 # Calculate daily returns
 returns = data.pct_change().dropna()
 
@@ -56,7 +56,7 @@ data["KO_XLP_RS"] = data["KO"] / data["XLP"]
 # Drop rows with missing values
 data = data.dropna()
 print("Features engineered")
-# Define target variable =============================================================================================================================================================================================
+
 # Define target for each stock
 future_days = 5  # Look ahead 5 days
 for stock in ["MNST", "KO"]:
@@ -71,10 +71,24 @@ data["Target"] = data[["MNST_Target", "KO_Target"]].mean(axis=1).round().astype(
 # Drop rows with missing targets
 data = data.dropna()
 print("Target variable defined")
-# Train and test model =============================================================================================================================================================================================
+
+# Check the distribution of the target variable
+print("Target distribution:\n", data["Target"].value_counts())
+
 # Features: Use PBJ, XLP, SPX, and stock-specific features
 print("Training and testing data...")
 features = ["PBJ", "XLP", "SPX", "XLP_MA7", "PBJ_MA30", "MNST_XLP_RS", "KO_XLP_RS"]
+
+# Normalize features
+scaler = StandardScaler()
+X = scaler.fit_transform(data[features])
+y = data["Target"]
+
+# Split data
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Initialize model
+rf = RandomForestClassifier(random_state=42)
 
 # Hyperparameter tuning
 param_grid = {
@@ -83,16 +97,6 @@ param_grid = {
     'min_samples_split': [2, 5, 10],
     'min_samples_leaf': [1, 2, 4]
 }
-
-# Prepare data for training
-X = data[features]
-y = data["Target"]
-
-# Split data
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-# Initialize model
-rf = RandomForestClassifier(random_state=42)
 
 # Perform grid search
 grid_search = GridSearchCV(estimator=rf, param_grid=param_grid, cv=3, n_jobs=-1, verbose=2)
@@ -107,12 +111,16 @@ print("Best Parameters:", grid_search.best_params_)
 print("Accuracy:", accuracy_score(y_test, y_pred))
 print("Classification Report:\n", classification_report(y_test, y_pred))
 
+# Check feature importance
+feature_importances = pd.Series(best_model.feature_importances_, index=features)
+print("Feature Importances:\n", feature_importances)
+
 # Save model
 model = best_model
 print("Model trained and tested")
-# Predict for new stock data =============================================================================================================================================================================================
+
 # Predicting
-def predict_stock_signal(new_stock_data, model, indicators):
+def predict_stock_signal(new_stock_data, model, indicators, scaler):
     # Merge new stock data with indicators
     data = pd.concat([new_stock_data, indicators], axis=1)
     data = data.dropna()
@@ -123,8 +131,8 @@ def predict_stock_signal(new_stock_data, model, indicators):
     data["MNST_XLP_RS"] = data["Stock"] / data["XLP"]
     data["KO_XLP_RS"] = data["Stock"] / data["XLP"]
     
-    # Predict using the general model
-    X = data[["PBJ", "XLP", "SPX", "XLP_MA7", "PBJ_MA30", "MNST_XLP_RS", "KO_XLP_RS"]]
+    # Normalize features
+    X = scaler.transform(data[["PBJ", "XLP", "SPX", "XLP_MA7", "PBJ_MA30", "MNST_XLP_RS", "KO_XLP_RS"]])
     predictions = model.predict(X)
     
     return predictions
@@ -160,7 +168,7 @@ for file_name in os.listdir(input_folder):
         input_stock.rename(columns={"PX_LAST": "Stock"}, inplace=True)
 
         # Predict
-        predictions = predict_stock_signal(input_stock, model, data[["PBJ", "XLP", "SPX"]])
+        predictions = predict_stock_signal(input_stock, model, data[["PBJ", "XLP", "SPX"]], scaler)
         print(f"Predictions for {file_name}:", predictions)
         recommendation = get_majority_recommendation(predictions)
         print(f"Recommendation for {file_name}: {recommendation}")
