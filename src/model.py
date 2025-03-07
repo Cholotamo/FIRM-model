@@ -7,6 +7,7 @@ from sklearn.preprocessing import StandardScaler
 import os
 from collections import Counter
 
+# Data Preprocessing ===========================================================================================================================================================================================
 # Function to load data with error handling
 def load_data(file_path, sheet_name):
     if not os.path.exists(file_path):
@@ -41,7 +42,7 @@ data = pd.concat([xlp["PX_LAST"], pbj["PX_LAST"], spx["PX_LAST"], mnst["PX_LAST"
                  axis=1, keys=["XLP", "PBJ", "SPX", "MNST", "KO"])
 data = data.dropna()
 print("Data loaded and cleaned")
-
+# Feature Engineering ===========================================================================================================================================================================================
 # Calculate daily returns
 returns = data.pct_change().dropna()
 
@@ -56,7 +57,7 @@ data["KO_XLP_RS"] = data["KO"] / data["XLP"]
 # Drop rows with missing values
 data = data.dropna()
 print("Features engineered")
-
+# Target Variable ===========================================================================================================================================================================================
 # Define target for each stock
 future_days = 5  # Look ahead 5 days
 for stock in ["MNST", "KO"]:
@@ -74,7 +75,7 @@ print("Target variable defined")
 
 # Check the distribution of the target variable
 print("Target distribution:\n", data["Target"].value_counts())
-
+# Model Training ===========================================================================================================================================================================================
 # Features: Use PBJ, XLP, SPX, and stock-specific features
 print("Training and testing data...")
 features = ["PBJ", "XLP", "SPX", "XLP_MA7", "PBJ_MA30", "MNST_XLP_RS", "KO_XLP_RS"]
@@ -118,7 +119,7 @@ print("Feature Importances:\n", feature_importances)
 # Save model
 model = best_model
 print("Model trained and tested")
-
+# Predictions ===========================================================================================================================================================================================
 # Predicting
 def predict_stock_signal(new_stock_data, model, indicators, scaler):
     # Merge new stock data with indicators
