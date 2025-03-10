@@ -42,6 +42,7 @@ data = pd.concat([xlp["PX_LAST"], pbj["PX_LAST"], spx["PX_LAST"], mnst["PX_LAST"
                  axis=1, keys=["XLP", "PBJ", "SPX", "MNST", "KO"])
 data = data.dropna()
 print("Data loaded and cleaned")
+print(data.head())
 # Feature Engineering ===========================================================================================================================================================================================
 # Calculate daily returns
 returns = data.pct_change().dropna()
@@ -57,6 +58,7 @@ data["KO_XLP_RS"] = data["KO"] / data["XLP"]
 # Drop rows with missing values
 data = data.dropna()
 print("Features engineered")
+print(data.head())
 # Target Variable ===========================================================================================================================================================================================
 # Define target for each stock
 future_days = 5  # Look ahead 5 days
@@ -72,7 +74,7 @@ data["Target"] = data[["MNST_Target", "KO_Target"]].mean(axis=1).round().astype(
 # Drop rows with missing targets
 data = data.dropna()
 print("Target variable defined")
-
+print(data.head())
 # Check the distribution of the target variable
 print("Target distribution:\n", data["Target"].value_counts())
 # Model Training ===========================================================================================================================================================================================
@@ -138,24 +140,6 @@ def predict_stock_signal(new_stock_data, model, indicators, scaler):
     
     return predictions
 
-# Function to count majority prediction and print recommendation
-def get_majority_recommendation(predictions):
-    # Count the occurrences of each prediction
-    prediction_counts = Counter(predictions)
-    
-    # Get the majority prediction
-    majority_prediction = prediction_counts.most_common(1)[0][0]  # Most frequent prediction
-    
-    # Map the majority prediction to a recommendation
-    if majority_prediction == 1:
-        return "Buy"
-    elif majority_prediction == 0:
-        return "Hold"
-    elif majority_prediction == -1:
-        return "Sell"
-    else:
-        return "No clear recommendation"
-
 # Predict for new stock data
 input_folder = "input"
 output_folder = "output"
@@ -171,8 +155,6 @@ for file_name in os.listdir(input_folder):
         # Predict
         predictions = predict_stock_signal(input_stock, model, data[["PBJ", "XLP", "SPX"]], scaler)
         print(f"Predictions for {file_name}:", predictions)
-        recommendation = get_majority_recommendation(predictions)
-        print(f"Recommendation for {file_name}: {recommendation}")
 
         # Save predictions to CSV
         output_file_path = os.path.join(output_folder, f"{os.path.splitext(file_name)[0]}_predictions.csv")
