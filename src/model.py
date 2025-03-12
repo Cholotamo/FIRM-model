@@ -4,6 +4,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, accuracy_score
 from sklearn.model_selection import GridSearchCV
 import seaborn as sns
+import matplotlib.pyplot as plt
 import pandas as pd
 import os
 
@@ -203,9 +204,30 @@ print("\nClassification Report:\n", classification_report(y_test, y_pred_labels)
 
 
 
+
 # Feature Importance
-corr_matrix = data[features + ['Label']].corr()
-sns.heatmap(corr_matrix[['Label']], annot=True)
+# 1. Create a copy with only numeric features + encoded labels
+data_corr = data[features].copy()
+data_corr['Label'] = le.fit_transform(data['Label'])  # Encode labels numerically
+
+# 2. Calculate correlations
+corr_matrix = data_corr.corr()
+
+# 3. Plot correlation matrix
+plt.figure(figsize=(20, 16))
+sns.heatmap(
+    corr_matrix,
+    annot=True,
+    fmt=".2f",
+    cmap="coolwarm",
+    center=0,
+    linewidths=0.5,
+    annot_kws={"size": 8}
+)
+plt.title("Feature Correlation Matrix")
+plt.xticks(rotation=45, ha='right')
+plt.tight_layout()
+plt.show()
 
 
 
