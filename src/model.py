@@ -3,6 +3,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, accuracy_score
 from sklearn.model_selection import GridSearchCV
+import seaborn as sns
 import pandas as pd
 import os
 
@@ -93,12 +94,9 @@ print(data.columns)
 
 # Target variable
 # ???subject to change???
-data['Future_5d_Return'] = data['PX_LAST'].shift(-5) / data['PX_LAST'] - 1
-data['Label'] = data['Future_5d_Return'].apply(
-    lambda x: 'Buy' if x > 0.015
-                else 'Sell' if x < -0.015
-                else 'Hold'
-)
+# 10-day forward return
+data['Future_10d_Return'] = data['PX_LAST'].shift(-10) / data['PX_LAST'] - 1
+data['Label'] = pd.qcut(data['Future_10d_Return'], q=[0, 0.25, 0.75, 1], labels=['Sell', 'Hold', 'Buy'])
 print("TARGET VARIABLE=====================================================================================================================================================")
 print(data['Label'].value_counts())
 
@@ -171,7 +169,7 @@ rf = RandomForestClassifier(
     n_estimators=200,  # Number of trees
     max_depth=10,       # Control overfitting
     random_state=42,    # Reproducibility
-    class_weight="balanced"
+    class_weight={0: 3, 1: 1, 2: 3}
 )
 
 # Hyperparameter tuning
@@ -206,7 +204,8 @@ print("\nClassification Report:\n", classification_report(y_test, y_pred_labels)
 
 
 # Feature Importance
-
+corr_matrix = data[features + ['Label']].corr()
+sns.heatmap(corr_matrix[['Label']], annot=True)
 
 
 
