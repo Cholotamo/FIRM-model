@@ -1,162 +1,218 @@
-import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, accuracy_score
-from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import GridSearchCV
+import pandas as pd
 import os
-from collections import Counter
-
-# Data Preprocessing ===========================================================================================================================================================================================
-# Function to load data with error handling
-def load_data(file_path, sheet_name):
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"File not found: {file_path}")
-    try:
-        return pd.read_excel(file_path, sheet_name=sheet_name, skiprows=6)
-    except Exception as e:
-        raise ValueError(f"Error loading {file_path}: {e}")
 
 # Load data
-xlp = load_data("data/xlp.xlsx", "Worksheet")
-pbj = load_data("data/pbj.xlsx", "Worksheet")
-spx = load_data("data/spx.xlsx", "Worksheet")
-mnst = load_data("data/mnst.xlsx", "Worksheet")
-ko = load_data("data/ko.xlsx", "Worksheet")
+data_folder = "data"
+csv_files = [f for f in os.listdir(data_folder) if f.endswith('.csv')]
 
-# Clean and prepare data
-def clean_data(df):
-    df = df.dropna(subset=["Date"])
-    df["Date"] = pd.to_datetime(df["Date"])
-    df.set_index("Date", inplace=True)
-    return df
+# Initialize an empty DataFrame
+data = pd.DataFrame()
 
-xlp = clean_data(xlp)
-pbj = clean_data(pbj)
-spx = clean_data(spx)
-mnst = clean_data(mnst)
-ko = clean_data(ko)
+# Iterate over CSV files and merge them
+for file in csv_files:
+    file_path = os.path.join(data_folder, file)
+    if file == "pbj_hp.csv":
+        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "PBJ_Price", "PBJ_ROC"], skiprows=1)
+    elif file == "xlp_hp.csv":
+        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "XLP_Price", "XLP_ROC"], skiprows=1)
+    else:
+        df = pd.read_csv(file_path, parse_dates=["Date"])
+    
+    # Ensure 'Date' column is datetime64[ns]
+    df['Date'] = pd.to_datetime(df['Date'])
+    
+    if data.empty:
+        data = df
+    else:
+        data = data.merge(df, on="Date", how="left")
 
-# Merge data
-data = pd.concat([xlp["PX_LAST"], pbj["PX_LAST"], spx["PX_LAST"], mnst["PX_LAST"], ko["PX_LAST"]], 
-                 axis=1, keys=["XLP", "PBJ", "SPX", "MNST", "KO"])
+# Clean the data
 data = data.dropna()
-print("Data loaded and cleaned")
+
+# Rename columns
+# Rename "Rate of Change (%)" to "Revenue_ROC", "Rate_of_Change" to "HP_ROC"
+data = data.rename(columns={
+    "Rate of Change (%)": "Revenue_ROC",
+    "Rate_of_Change": "HP_ROC"
+})
+
+# ???Reinterpret the words "buy", sell", "hold" as numerical values???
+
+# Display the merged DataFrame
+print("LOADING DATA======================================================================================================================================================")
 print(data.head())
-# Feature Engineering ===========================================================================================================================================================================================
-# Calculate daily returns
-returns = data.pct_change().dropna()
 
-# Create moving averages
-data["XLP_MA7"] = data["XLP"].rolling(window=7).mean()
-data["PBJ_MA30"] = data["PBJ"].rolling(window=30).mean()
 
-# Relative strength: Stock vs. XLP
-data["MNST_XLP_RS"] = data["MNST"] / data["XLP"]
-data["KO_XLP_RS"] = data["KO"] / data["XLP"]
 
-# Drop rows with missing values
-data = data.dropna()
-print("Features engineered")
+
+
+
+
+
+
+# Feature Engineering
+
+# Lag features
+data['ANR_lag1'] = data['ANR'].shift(1)  # Previous day's ANR
+data['PX_LAST_lag1'] = data['PX_LAST'].shift(1)  # Previous day's closing price
+data['Revenue_lag7'] = data['Revenue'].rolling(window=7).mean()  # 7-day avg revenue
+
+# Moving averages
+data['PX_LAST_MA7'] = data['PX_LAST'].rolling(window=7).mean()  # 7-day moving average
+data['ANR_MA30'] = data['ANR'].rolling(window=30).mean()  # 30-day ANR trend
+
+# Relative performance
+data['Target_Price_Gap'] = data['PX_LAST'] / data['Target Price']  # % to target
+data['Undervalued'] = (data['PX_LAST'] < data['Target Price']).astype(int)  # Binary flag
+data['Stock_vs_PBJ'] = data['PX_LAST'] / data['PBJ_Price']  # Relative strength to PBJ
+data['Stock_vs_XLP'] = data['PX_LAST'] / data['XLP_Price']  # Relative strength to XLP
+
+# Momentum and volatility
+data['PX_ROC_5d'] = data['PX_LAST'].pct_change(5)  # 5-day price momentum
+data['Revenue_ROC_30d'] = data['Revenue'].pct_change(30)
+
+# Sentiment
+data['ANR_Change_Abs'] = data['ANR Change'].abs()  # Strength of analyst sentiment shift
+
+# Display the engineered features
+print("FEATURE ENGINEERING================================================================================================================================================")
 print(data.head())
-# Target Variable ===========================================================================================================================================================================================
-# Define target for each stock
-future_days = 5  # Look ahead 5 days
-for stock in ["MNST", "KO"]:
-    data[f"{stock}_Future_Price"] = data[stock].shift(-future_days)
-    data[f"{stock}_Target"] = np.where(data[f"{stock}_Future_Price"] > data[stock] * 1.01, 1,  # Buy
-                             np.where(data[f"{stock}_Future_Price"] < data[stock] * 0.99, -1,  # Sell
-                             0))  # Hold
+print(data.columns)
 
-# Combine targets into a single column
-data["Target"] = data[["MNST_Target", "KO_Target"]].mean(axis=1).round().astype(int)
 
-# Drop rows with missing targets
-data = data.dropna()
-print("Target variable defined")
-print(data.head())
-# Check the distribution of the target variable
-print("Target distribution:\n", data["Target"].value_counts())
-# Model Training ===========================================================================================================================================================================================
-# Features: Use PBJ, XLP, SPX, and stock-specific features
-print("Training and testing data...")
-features = ["PBJ", "XLP", "SPX", "XLP_MA7", "PBJ_MA30", "MNST_XLP_RS", "KO_XLP_RS"]
 
-# Normalize features
+
+
+
+
+
+# Target variable
+# ???subject to change???
+data['Future_5d_Return'] = data['PX_LAST'].shift(-5) / data['PX_LAST'] - 1
+data['Label'] = data['Future_5d_Return'].apply(
+    lambda x: 'Buy' if x > 0.015
+                else 'Sell' if x < -0.015
+                else 'Hold'
+)
+print("TARGET VARIABLE=====================================================================================================================================================")
+print(data['Label'].value_counts())
+
+
+
+
+
+
+
+
+
+# Final data preparation
+data.fillna(method='ffill', inplace=True)  # Forward-fill missing values
+data.dropna(inplace=True)  # Drop remaining NaN rows
 scaler = StandardScaler()
-X = scaler.fit_transform(data[features])
-y = data["Target"]
+scaled_features = scaler.fit_transform(data[['ANR', 'PX_LAST', 'Revenue', 'PBJ_Price']])
 
-# Split data
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# Train test split to be time-series aware
+train = data[data['Date'] < '2024-01-01']
+test = data[data['Date'] >= '2024-01-01']
 
-# Initialize model
-rf = RandomForestClassifier(random_state=42)
+print("FINAL DATA PREPARATION=============================================================================================================================================")
+print(train.head())
+
+
+
+
+
+
+
+
+
+print("TRAINING MODEL=====================================================================================================================================================")
+# Feature selection
+features = [
+    'ANR', 'ANR Change', 'Revenue', 'Revenue_ROC',
+    'PX_LAST', 'HP_ROC', 'PBJ_Price', 'PBJ_ROC',
+    'XLP_Price', 'XLP_ROC', 'ANR_lag1', 'PX_LAST_lag1',
+    'Revenue_lag7', 'PX_LAST_MA7', 'ANR_MA30', 'Stock_vs_PBJ',
+    'Stock_vs_XLP', 'PX_ROC_5d', 'Revenue_ROC_30d', 'ANR_Change_Abs'
+]
+# Excluded columns
+# (a) ANR Classification
+# This is your target variable (the label you’re trying to predict). Including it as a feature would cause data leakage since the model would "cheat" by seeing the answer during training. Remove it!
+# (b) Target Price
+# This is a forward-looking metric (analyst consensus for future price). If this is not available in real time when making predictions (e.g., analysts update it periodically), including it would leak future information.
+# (c) Undervalued
+# This is derived from PX_LAST and Target Price. If Target Price is excluded, Undervalued should also be excluded to avoid indirect leakage.
+
+# Define X and y
+X_train = train[features]
+X_test = test[features]
+y_train = train['Label']
+y_test = test['Label']
+
+# Train a model
+
+# Encode the labels
+le = LabelEncoder()
+y_train_encoded = le.fit_transform(y_train)
+y_test_encoded = le.transform(y_test)
+
+# Print the mapping of labels to encoded values
+print("Label encoding mapping:")
+for label, encoded in zip(le.classes_, range(len(le.classes_))):
+    print(f"{label}: {encoded}")
+
+# Initialize the model
+rf = RandomForestClassifier(
+    n_estimators=200,  # Number of trees
+    max_depth=10,       # Control overfitting
+    random_state=42,    # Reproducibility
+    class_weight="balanced"
+)
 
 # Hyperparameter tuning
 param_grid = {
-    'n_estimators': [50, 100, 200],
-    'max_depth': [None, 10, 20, 30],
-    'min_samples_split': [2, 5, 10],
-    'min_samples_leaf': [1, 2, 4]
+    'n_estimators': [100, 200],
+    'max_depth': [5, 10],
+    'min_samples_split': [5, 10]  # Force splits to consider minority classes
 }
+grid_search = GridSearchCV(rf, param_grid, scoring='f1_macro', cv=5)
+grid_search.fit(X_train, y_train_encoded)
+rf = grid_search.best_estimator_
 
-# Perform grid search
-grid_search = GridSearchCV(estimator=rf, param_grid=param_grid, cv=3, n_jobs=-1, verbose=2)
-grid_search.fit(X_train, y_train)
+# Train the model
+rf.fit(X_train, y_train_encoded)
 
-# Get the best model
-best_model = grid_search.best_estimator_
+# Predict on test data
+y_pred = rf.predict(X_test)
 
-# Evaluate
-y_pred = best_model.predict(X_test)
-print("Best Parameters:", grid_search.best_params_)
-print("Accuracy:", accuracy_score(y_test, y_pred))
-print("Classification Report:\n", classification_report(y_test, y_pred))
+# Decode labels back to original strings
+y_pred_labels = le.inverse_transform(y_pred)
 
-# Check feature importance
-feature_importances = pd.Series(best_model.feature_importances_, index=features)
-print("Feature Importances:\n", feature_importances)
+# Print metrics
+print("Accuracy:", accuracy_score(y_test, y_pred_labels))
+print("\nClassification Report:\n", classification_report(y_test, y_pred_labels))
 
-# Save model
-model = best_model
-print("Model trained and tested")
-# Predictions ===========================================================================================================================================================================================
-# Predicting
-def predict_stock_signal(new_stock_data, model, indicators, scaler):
-    # Merge new stock data with indicators
-    data = pd.concat([new_stock_data, indicators], axis=1)
-    data = data.dropna()
-    
-    # Feature engineering
-    data["XLP_MA7"] = data["XLP"].rolling(window=7).mean()
-    data["PBJ_MA30"] = data["PBJ"].rolling(window=30).mean()
-    data["MNST_XLP_RS"] = data["Stock"] / data["XLP"]
-    data["KO_XLP_RS"] = data["Stock"] / data["XLP"]
-    
-    # Normalize features
-    X = scaler.transform(data[["PBJ", "XLP", "SPX", "XLP_MA7", "PBJ_MA30", "MNST_XLP_RS", "KO_XLP_RS"]])
-    predictions = model.predict(X)
-    
-    return predictions
 
-# Predict for new stock data
-input_folder = "input"
-output_folder = "output"
-os.makedirs(output_folder, exist_ok=True)
 
-for file_name in os.listdir(input_folder):
-    if file_name.endswith(".xlsx"):
-        file_path = os.path.join(input_folder, file_name)
-        input_stock = pd.read_excel(file_path, sheet_name="Worksheet", skiprows=6)  # Load new stock data
-        input_stock = clean_data(input_stock)
-        input_stock.rename(columns={"PX_LAST": "Stock"}, inplace=True)
 
-        # Predict
-        predictions = predict_stock_signal(input_stock, model, data[["PBJ", "XLP", "SPX"]], scaler)
-        print(f"Predictions for {file_name}:", predictions)
 
-        # Save predictions to CSV
-        output_file_path = os.path.join(output_folder, f"{os.path.splitext(file_name)[0]}_predictions.csv")
-        pd.DataFrame(predictions, columns=["Prediction"]).to_csv(output_file_path, index=False)
-        print(f"Predictions saved to {output_file_path}")
+
+
+
+
+# Feature Importance
+
+
+
+
+
+
+
+
+
+# Use the model to make predictions
