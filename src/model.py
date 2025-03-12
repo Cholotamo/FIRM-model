@@ -229,7 +229,23 @@ plt.xticks(rotation=45, ha='right')
 plt.tight_layout()
 plt.show()
 
+# Get feature importances
+importance = rf.feature_importances_
+feature_names = X_train.columns
 
+# Create a DataFrame for visualization
+feature_importance = pd.DataFrame({
+    'Feature': feature_names,
+    'Importance': importance
+}).sort_values('Importance', ascending=False)
+
+# Plot
+plt.figure(figsize=(10, 6))
+plt.barh(feature_importance['Feature'], feature_importance['Importance'])
+plt.title('Random Forest Feature Importance')
+plt.xlabel('Importance Score')
+plt.gca().invert_yaxis()  # Most important at top
+plt.show()
 
 
 
