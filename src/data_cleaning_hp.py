@@ -12,8 +12,8 @@ for file in os.listdir(input_dir):
         # Read the Excel file, skipping the first 6 rows
         df = pd.read_excel(input_file, skiprows=6)
         
-        # Remove the 'PX_BID' column
-        df = df.drop(columns=['PX_BID'])
+        # Remove the last column
+        df = df.iloc[:, :-1]
         
         # Print the DataFrame to inspect the data
         print(f"Data from {file}:")

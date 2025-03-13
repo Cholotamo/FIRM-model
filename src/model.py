@@ -23,6 +23,14 @@ for file in csv_files:
         df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "PBJ_Price", "PBJ_ROC"], skiprows=1)
     elif file == "xlp_hp.csv":
         df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "XLP_Price", "XLP_ROC"], skiprows=1)
+    elif file == "CONCCONF_HP.csv":
+        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "CONCCONF_Price", "CONCCONF_ROC"], skiprows=1) # Not included
+    elif file == "M2_HP.csv":
+        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "M2_Price", "M2_ROC"], skiprows=1) # Not included
+    elif file == "PCUSEQTR_HP.csv":
+        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "PCUSEQTR_Price", "PCUSEQTR_ROC"], skiprows=1)
+    elif file == "VIX_HP.csv":
+        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "VIX_Price", "VIX_ROC"], skiprows=1)
     else:
         df = pd.read_csv(file_path, parse_dates=["Date"])
     
