@@ -24,9 +24,9 @@ for file in csv_files:
     elif file == "xlp_hp.csv":
         df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "XLP_Price", "XLP_ROC"], skiprows=1)
     elif file == "CONCCONF_HP.csv":
-        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "CONCCONF_Price", "CONCCONF_ROC"], skiprows=1) # Not included
+        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "CONCCONF_Price", "CONCCONF_ROC"], skiprows=1) # take out
     elif file == "M2_HP.csv":
-        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "M2_Price", "M2_ROC"], skiprows=1) # Not included
+        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "M2_Price", "M2_ROC"], skiprows=1) # take out
     elif file == "PCUSEQTR_HP.csv":
         df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "PCUSEQTR_Price", "PCUSEQTR_ROC"], skiprows=1)
     elif file == "VIX_HP.csv":
@@ -41,6 +41,7 @@ for file in csv_files:
         data = df
     else:
         data = data.merge(df, on="Date", how="left")
+
 
 # Clean the data
 data = data.dropna()
@@ -57,6 +58,9 @@ data = data.rename(columns={
 # Display the merged DataFrame
 print("LOADING DATA======================================================================================================================================================")
 print(data.head())
+print(data.columns)
+# count the rows
+print(data.shape)
 
 
 
@@ -65,35 +69,127 @@ print(data.head())
 
 
 
-
-# Feature Engineering
+# ================================================================================================
+# FEATURE ENGINEERING
+# ================================================================================================
 
 # Lag features
-data['ANR_lag1'] = data['ANR'].shift(1)  # Previous day's ANR
-data['PX_LAST_lag1'] = data['PX_LAST'].shift(1)  # Previous day's closing price
-data['Revenue_lag7'] = data['Revenue'].rolling(window=7).mean()  # 7-day avg revenue
+data['ANR_lag1'] = data['ANR'].shift(1)
+data['PX_LAST_lag1'] = data['PX_LAST'].shift(1)
+data['Revenue_lag9'] = data['Revenue'].rolling(window=9, min_periods=1).mean()  # Added min_periods
 
 # Moving averages
-data['PX_LAST_MA7'] = data['PX_LAST'].rolling(window=7).mean()  # 7-day moving average
-data['ANR_MA30'] = data['ANR'].rolling(window=30).mean()  # 30-day ANR trend
+data['PX_LAST_MA9'] = data['PX_LAST'].rolling(window=9, min_periods=1).mean()
+data['ANR_MA20'] = data['ANR'].rolling(window=20, min_periods=1).mean()
 
-# Relative performance
-data['Target_Price_Gap'] = data['PX_LAST'] / data['Target Price']  # % to target
-data['Undervalued'] = (data['PX_LAST'] < data['Target Price']).astype(int)  # Binary flag
-data['Stock_vs_PBJ'] = data['PX_LAST'] / data['PBJ_Price']  # Relative strength to PBJ
-data['Stock_vs_XLP'] = data['PX_LAST'] / data['XLP_Price']  # Relative strength to XLP
+# Relative performance (with zero-division handling)
+data['Target_Price_Gap'] = np.where(
+    data['Target Price'] != 0,
+    data['PX_LAST'] / data['Target Price'],
+    np.nan
+)
+data['Undervalued'] = (data['PX_LAST'] < data['Target Price']).astype(int)
+data['Stock_vs_PBJ'] = np.where(
+    data['PBJ_Price'] != 0,
+    data['PX_LAST'] / data['PBJ_Price'],
+    np.nan
+)
+data['Stock_vs_XLP'] = np.where(
+    data['XLP_Price'] != 0,
+    data['PX_LAST'] / data['XLP_Price'],
+    np.nan
+)
 
-# Momentum and volatility
-data['PX_ROC_5d'] = data['PX_LAST'].pct_change(5)  # 5-day price momentum
-data['Revenue_ROC_30d'] = data['Revenue'].pct_change(30)
+# Momentum and volatility (with zero-division handling)
+data['PX_ROC_9d'] = data['PX_LAST'].pct_change(9)
+data['Revenue_ROC_20d'] = data['Revenue'].pct_change(20)
 
 # Sentiment
-data['ANR_Change_Abs'] = data['ANR Change'].abs()  # Strength of analyst sentiment shift
+data['ANR_Change_Abs'] = data['ANR Change'].abs()
+
+# Price Momentum & Volatility
+data['PX_LAST_MA21'] = data['PX_LAST'].rolling(21, min_periods=1).mean()
+data['PX_LAST_MA63'] = data['PX_LAST'].rolling(63, min_periods=1).mean()
+data['Price_Volatility_21d'] = data['PX_LAST'].rolling(21, min_periods=1).std()
+
+# Fractal Efficiency (with zero-division handling)
+diff_sum = data['PX_LAST'].rolling(21, min_periods=1).apply(lambda x: np.sum(np.abs(x.diff())))
+data['Fractal_Efficiency_21d'] = np.where(
+    diff_sum != 0,
+    (data['PX_LAST'] - data['PX_LAST'].shift(21)) / diff_sum,
+    np.nan
+)
+
+# Analyst Sentiment Dynamics
+data['ANR_3d_change'] = data['ANR'].pct_change(3)
+data['ANR_21d_zscore'] = (data['ANR'] - data['ANR'].rolling(21, min_periods=1).mean()) / data['ANR'].rolling(21, min_periods=1).std()
+data['ANR_Target_Ratio'] = np.where(
+    data['Target Price'] != 0,
+    data['ANR'] / data['Target Price'],
+    np.nan
+)
+
+# Seasonality Enhancements (with zero-division handling)
+data['Q2_Premium'] = np.where(
+    data['CQ2_Stock_Price'] != 0,
+    data['PX_LAST'] / data['CQ2_Stock_Price'],
+    np.nan
+)
+data['Q4_Discount'] = np.where(
+    data['CQ4_Stock_Price'] != 0,
+    data['PX_LAST'] / data['CQ4_Stock_Price'],
+    np.nan
+)
+data['CQ2CQ4_Ratio_MA21'] = data['CQ2_CQ4_Seasonality_Ratio'].rolling(21, min_periods=1).mean()
+data['CQ2PQ4_Ratio_ROC_14d'] = data['CQ2_PQ4_Seasonality_Ratio'].pct_change(14)
+
+# Market-Relative Strength (with zero-division handling)
+data['PBJ_RS_3d'] = np.where(
+    data['Stock_vs_PBJ'].rolling(3, min_periods=1).mean() != 0,
+    data['Stock_vs_PBJ'] / data['Stock_vs_PBJ'].rolling(3, min_periods=1).mean(),
+    np.nan
+)
+data['XLP_RS_Volatility'] = data['Stock_vs_XLP'].rolling(21, min_periods=1).std()
+
+# Risk Management Features
+data['Max_Drawdown_21d'] = data['PX_LAST'].rolling(21, min_periods=1).apply(
+    lambda x: (x.min() - x.max()) / x.max() if x.max() != 0 else np.nan
+)
+data['Recovery_Factor_63d'] = np.where(
+    data['PX_LAST'].rolling(63, min_periods=1).mean() != 0,
+    data['PX_LAST'].rolling(63, min_periods=1).max() / data['PX_LAST'].rolling(63, min_periods=1).mean(),
+    np.nan
+)
+
+# Quarterly Interaction Features (with zero-division handling)
+for q in ['Q_1', 'Q_2', 'Q_3', 'Q_4']:
+    data[f'{q}_Price_Ratio'] = np.where(
+        data[q] != 0,
+        data['PX_LAST'] / data[q],
+        np.nan
+    )
+
+# ================================================================================================
+# FINAL CLEANUP
+# ================================================================================================
+
+# Replace inf and large values with NaN
+data = data.replace([np.inf, -np.inf], np.nan)
+
+# Forward fill NaNs (to preserve time-series continuity)
+data.ffill(inplace=True)
+
+# Drop any remaining NaNs
+data.dropna(inplace=True)
 
 # Display the engineered features
 print("FEATURE ENGINEERING================================================================================================================================================")
 print(data.head())
 print(data.columns)
+print(data.shape)
+# print to csv
+data.to_csv("output/feature_engineered_data.csv", index=False)
+
 
 
 
@@ -146,11 +242,22 @@ print(train.head())
 print("INITIALIZING FEATURES=====================================================================================================================================================")
 # Feature selection
 features = [
-    'ANR', 'ANR Change', 'Revenue', 'Revenue_ROC',
-    'PX_LAST', 'HP_ROC', 'PBJ_Price', 'PBJ_ROC',
-    'XLP_Price', 'XLP_ROC', 'ANR_lag1', 'PX_LAST_lag1',
-    'Revenue_lag7', 'PX_LAST_MA7', 'ANR_MA30', 'Stock_vs_PBJ',
-    'Stock_vs_XLP', 'PX_ROC_5d', 'Revenue_ROC_30d', 'ANR_Change_Abs'
+    'ANR', 'Target Price', 'ANR Change',
+    'Revenue', 'Revenue_ROC', 'PX_LAST', 'HP_ROC', 'Stock Price', 'Q_1',
+    'Q_2', 'Q_3', 'Q_4', 'CQ2_Stock_Price', 'CQ4_Stock_Price',
+    'CQ2_CQ4_Seasonality_Ratio', 
+    'Prev_Q4_Stock_Price', 'CQ2_PQ4_Seasonality_Ratio',
+    'PBJ_Price', 'PBJ_ROC', 'PCUSEQTR_Price',
+    'PCUSEQTR_ROC', 'VIX_Price', 'VIX_ROC', 'XLP_Price', 'XLP_ROC',
+    'ANR_lag1', 'PX_LAST_lag1', 'Revenue_lag9', 'PX_LAST_MA9', 'ANR_MA20',
+    'Target_Price_Gap', 'Undervalued', 'Stock_vs_PBJ', 'Stock_vs_XLP',
+    'PX_ROC_9d', 'Revenue_ROC_20d', 'ANR_Change_Abs', 'PX_LAST_MA21',
+    'PX_LAST_MA63', 'Price_Volatility_21d', 'Fractal_Efficiency_21d',
+    'ANR_3d_change', 'ANR_21d_zscore', 'ANR_Target_Ratio', 'Q2_Premium',
+    'Q4_Discount', 'CQ2CQ4_Ratio_MA21', 'CQ2PQ4_Ratio_ROC_14d', 'PBJ_RS_3d',
+    'XLP_RS_Volatility', 'Max_Drawdown_21d', 'Recovery_Factor_63d',
+    'Q_1_Price_Ratio', 'Q_2_Price_Ratio', 'Q_3_Price_Ratio',
+    'Q_4_Price_Ratio'
 ]
 # Excluded columns
 # (a) ANR Classification
