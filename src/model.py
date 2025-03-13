@@ -96,8 +96,12 @@ print(data.columns)
 # Target variable
 # ???subject to change???
 # 10-day forward return
-data['Future_10d_Return'] = data['PX_LAST'].shift(-10) / data['PX_LAST'] - 1
-data['Label'] = pd.qcut(data['Future_10d_Return'], q=[0, 0.25, 0.75, 1], labels=['Sell', 'Hold', 'Buy'])
+data['Future_20d_Return'] = data['PX_LAST'].shift(-20) / data['PX_LAST'] - 1
+data['Label'] = data['Future_20d_Return'].apply(
+    lambda x: 'Buy' if x > 0.045
+                else 'Sell' if x < -0.045
+                else 'Hold'
+)
 print("TARGET VARIABLE=====================================================================================================================================================")
 print(data['Label'].value_counts())
 
@@ -133,11 +137,10 @@ print(train.head())
 print("TRAINING MODEL=====================================================================================================================================================")
 # Feature selection
 features = [
-    'ANR', 'ANR Change', 'Revenue', 'Revenue_ROC',
-    'PX_LAST', 'HP_ROC', 'PBJ_Price', 'PBJ_ROC',
-    'XLP_Price', 'XLP_ROC', 'ANR_lag1', 'PX_LAST_lag1',
-    'Revenue_lag7', 'PX_LAST_MA7', 'ANR_MA30', 'Stock_vs_PBJ',
-    'Stock_vs_XLP', 'PX_ROC_5d', 'Revenue_ROC_30d', 'ANR_Change_Abs'
+    'ANR Change',
+    'HP_ROC',
+    'PX_LAST_MA7', 'ANR_MA30', 'Stock_vs_PBJ',
+    'PX_ROC_5d', 'Revenue_ROC_30d', 'ANR_Change_Abs'
 ]
 # Excluded columns
 # (a) ANR Classification
