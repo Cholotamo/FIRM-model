@@ -203,8 +203,8 @@ data.to_csv("output/feature_engineered_data.csv", index=False)
 # 10-day forward return
 data['Future_20d_Return'] = data['PX_LAST'].shift(-20) / data['PX_LAST'] - 1
 data['Label'] = data['Future_20d_Return'].apply(
-    lambda x: 'Buy' if x > 0.044
-                else 'Sell' if x < -0.044
+    lambda x: 'Buy' if x > 0.04
+                else 'Sell' if x < -0.04
                 else 'Hold'
 )
 print("TARGET VARIABLE=====================================================================================================================================================")
