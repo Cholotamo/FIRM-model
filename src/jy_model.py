@@ -55,10 +55,10 @@ print(data.head())
 # Lag features
 data['ANR_lag1'] = data['ANR'].shift(1)  # Previous day's ANR
 data['PX_LAST_lag1'] = data['PX_LAST'].shift(1)  # Previous day's closing price
-data['Revenue_lag7'] = data['Revenue'].rolling(window=7).mean()  # 7-day avg revenue
+data['Revenue_lag7'] = data['Revenue'].rolling(window=7).mean()  # 7-day avg revenue, Change to either 9, 20
 
 # Moving averages
-data['PX_LAST_MA7'] = data['PX_LAST'].rolling(window=7).mean()  # 7-day moving average
+data['PX_LAST_MA7'] = data['PX_LAST'].rolling(window=7).mean()  # 7-day moving average, Change to either 9, 20
 data['ANR_MA30'] = data['ANR'].rolling(window=30).mean()  # 30-day ANR trend
 
 # Relative performance
@@ -68,11 +68,16 @@ data['Stock_vs_PBJ'] = data['PX_LAST'] / data['PBJ_Price']  # Relative strength 
 data['Stock_vs_XLP'] = data['PX_LAST'] / data['XLP_Price']  # Relative strength to XLP
 
 # Momentum and volatility
-data['PX_ROC_5d'] = data['PX_LAST'].pct_change(5)  # 5-day price momentum
+data['PX_ROC_5d'] = data['PX_LAST'].pct_change(5)  # 5-day price momentum 
 data['Revenue_ROC_30d'] = data['Revenue'].pct_change(30)
 
 # Sentiment
 data['ANR_Change_Abs'] = data['ANR Change'].abs()  # Strength of analyst sentiment shift
+
+# ???subject to change???
+# Bolliinger Bands
+
+# MACD
 
 # Display the engineered features
 print("FEATURE ENGINEERING================================================================================================================================================")
@@ -91,6 +96,8 @@ data['Label'] = data['Future_20d_Return'].apply(
 
 print("TARGET VARIABLE=====================================================================================================================================================")
 print(data['Label'].value_counts())
+
+
 
 # Final data preparation
 data.fillna(method='ffill', inplace=True)  # Forward-fill missing values
