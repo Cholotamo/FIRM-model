@@ -6,6 +6,7 @@ from sklearn.model_selection import GridSearchCV
 import seaborn as sns
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
 import os
 
 # Load data
@@ -98,8 +99,8 @@ print(data.columns)
 # 10-day forward return
 data['Future_20d_Return'] = data['PX_LAST'].shift(-20) / data['PX_LAST'] - 1
 data['Label'] = data['Future_20d_Return'].apply(
-    lambda x: 'Buy' if x > 0.045
-                else 'Sell' if x < -0.045
+    lambda x: 'Buy' if x > 0.044
+                else 'Sell' if x < -0.044
                 else 'Hold'
 )
 print("TARGET VARIABLE=====================================================================================================================================================")
@@ -114,7 +115,7 @@ print(data['Label'].value_counts())
 
 
 # Final data preparation
-data.fillna(method='ffill', inplace=True)  # Forward-fill missing values
+data.ffill(inplace=True)  # Forward-fill missing values
 data.dropna(inplace=True)  # Drop remaining NaN rows
 scaler = StandardScaler()
 scaled_features = scaler.fit_transform(data[['ANR', 'PX_LAST', 'Revenue', 'PBJ_Price']])
@@ -134,13 +135,14 @@ print(train.head())
 
 
 
-print("TRAINING MODEL=====================================================================================================================================================")
+print("INITIALIZING FEATURES=====================================================================================================================================================")
 # Feature selection
 features = [
-    'ANR Change',
-    'HP_ROC',
-    'PX_LAST_MA7', 'ANR_MA30', 'Stock_vs_PBJ',
-    'PX_ROC_5d', 'Revenue_ROC_30d', 'ANR_Change_Abs'
+    'ANR', 'ANR Change', 'Revenue', 'Revenue_ROC',
+    'PX_LAST', 'HP_ROC', 'PBJ_Price', 'PBJ_ROC',
+    'XLP_Price', 'XLP_ROC', 'ANR_lag1', 'PX_LAST_lag1',
+    'Revenue_lag7', 'PX_LAST_MA7', 'ANR_MA30', 'Stock_vs_PBJ',
+    'Stock_vs_XLP', 'PX_ROC_5d', 'Revenue_ROC_30d', 'ANR_Change_Abs'
 ]
 # Excluded columns
 # (a) ANR Classification
@@ -168,6 +170,135 @@ print("Label encoding mapping:")
 for label, encoded in zip(le.classes_, range(len(le.classes_))):
     print(f"{label}: {encoded}")
 
+
+
+
+
+
+
+
+# Multicollinearity removal process
+print("\nREMOVING MULTICOLLINEAR FEATURES===================================================================================================================================")
+features_modified = features.copy()
+removal_occurred = True
+
+while removal_occurred:
+    # Calculate correlation matrix
+    corr_matrix = X_train[features_modified].corr().abs()
+    upper_triangle = corr_matrix.where(np.triu(np.ones(corr_matrix.shape, dtype=bool), k=1))
+    
+    # Find high correlation pairs
+    high_corr = [(col1, col2) for col1 in upper_triangle.columns 
+                for col2 in upper_triangle.index 
+                if upper_triangle.loc[col2, col1] > 0.5]
+    
+    if not high_corr:
+        print("No highly correlated pairs remaining (r > 0.5).")
+        removal_occurred = False
+        break
+    
+    # Find highest correlation pair
+    max_corr = 0
+    max_pair = None
+    for pair in high_corr:
+        if upper_triangle.loc[pair[1], pair[0]] > max_corr:
+            max_corr = upper_triangle.loc[pair[1], pair[0]]
+            max_pair = (pair[0], pair[1])
+    
+    # Get feature importances
+    rf_prelim = RandomForestClassifier(n_estimators=100, random_state=42)
+    rf_prelim.fit(X_train[features_modified], y_train_encoded)
+    importances = pd.Series(rf_prelim.feature_importances_, index=features_modified)
+    
+    # Determine which feature to remove
+    if importances[max_pair[0]] >= importances[max_pair[1]]:
+        remove_feature = max_pair[1]
+    else:
+        remove_feature = max_pair[0]
+    
+    print(f"Removing '{remove_feature}' (importance: {importances[remove_feature]:.4f}) - Correlated with '{max_pair[0] if remove_feature == max_pair[1] else max_pair[1]}' (r = {max_corr:.2f})")
+    
+    # Update feature list
+    features_modified.remove(remove_feature)
+    
+    # Update data splits
+    X_train = train[features_modified]
+    X_test = test[features_modified]
+
+# Final feature set
+features = features_modified
+print("\nFINAL FEATURE SET:", features)
+
+
+
+
+
+
+
+
+
+
+# ... [Previous code up through multicollinearity removal] ...
+
+print("\nFINAL FEATURE SET AFTER MULTICOLLINEARITY REMOVAL:", features_modified)
+
+# New: Remove low-importance features
+print("\nREMOVING LOW-IMPORTANCE FEATURES===================================================================================================================================")
+
+# Calculate feature importances with current set
+rf_prelim = RandomForestClassifier(n_estimators=100, random_state=42)
+rf_prelim.fit(X_train[features_modified], y_train_encoded)
+importances = pd.Series(rf_prelim.feature_importances_, index=features_modified)
+
+# Set dynamic thresholds (1% of max importance and absolute minimum)
+max_importance = importances.max()
+relative_threshold = max_importance * 0.01
+absolute_threshold = 0.01  # Hard minimum regardless of max
+low_importance = importances[
+    (importances < relative_threshold) & 
+    (importances < absolute_threshold)
+].index.tolist()
+
+# Remove low-importance features iteratively
+while low_importance:
+    # Remove the lowest importance feature first
+    to_remove = importances.idxmin()
+    print(f"Removing '{to_remove}' (importance: {importances[to_remove]:.4f})")
+    features_modified.remove(to_remove)
+    
+    # Recalculate importances
+    if len(features_modified) > 0:  # Prevent empty feature set
+        rf_prelim.fit(X_train[features_modified], y_train_encoded)
+        importances = pd.Series(rf_prelim.feature_importances_, index=features_modified)
+        
+        # Update low-importance list
+        low_importance = importances[
+            (importances < relative_threshold) & 
+            (importances < absolute_threshold)
+        ].index.tolist()
+    else:
+        break
+
+# Final feature set update
+features = features_modified
+print("\nFINAL FEATURE SET AFTER IMPORTANCE FILTERING:", features)
+if not features:
+    raise ValueError("All features removed! Check threshold values.")
+
+# Update data splits
+X_train = train[features]
+X_test = test[features]
+
+
+
+
+
+
+
+
+
+
+print("TRAINING MODEL=====================================================================================================================================================")
 # Initialize the model
 rf = RandomForestClassifier(
     n_estimators=200,  # Number of trees
