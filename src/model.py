@@ -25,10 +25,10 @@ for file in csv_files:
         df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "PBJ_Price", "PBJ_ROC"], skiprows=1)
     elif file == "xlp_hp.csv":
         df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "XLP_Price", "XLP_ROC"], skiprows=1)
-    elif file == "CONCCONF_HP.csv":
-        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "CONCCONF_Price", "CONCCONF_ROC"], skiprows=1) # take out
-    elif file == "M2_HP.csv":
-        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "M2_Price", "M2_ROC"], skiprows=1) # take out
+    elif file == "CONCCONF_Daily_Interpolated.csv":
+        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "CONCCONF_Price", "CONCCONF_ROC"], skiprows=1) 
+    elif file == "M2_HP_Daily_Interpolated.csv":
+        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "M2_Price", "M2_ROC"], skiprows=1) 
     elif file == "PCUSEQTR_HP.csv":
         df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "PCUSEQTR_Price", "PCUSEQTR_ROC"], skiprows=1)
     elif file == "VIX_HP.csv":
@@ -244,22 +244,22 @@ print(train.head())
 print("INITIALIZING FEATURES=====================================================================================================================================================")
 # Feature selection
 features = [
-    'ANR', 'Target Price', 'ANR Change',
-    'Revenue', 'Revenue_ROC', 'PX_LAST', 'HP_ROC', 'Stock Price', 'Q_1',
-    'Q_2', 'Q_3', 'Q_4', 'CQ2_Stock_Price', 'CQ4_Stock_Price',
-    'CQ2_CQ4_Seasonality_Ratio', 
+    'CONCCONF_Price', 'CONCCONF_ROC', 'ANR', 'Target Price',
+    'ANR Change', 'Revenue', 'Revenue_ROC', 'PX_LAST',
+    'HP_ROC', 'Stock Price', 'Q_1', 'Q_2', 'Q_3', 'Q_4', 'CQ2_Stock_Price',
+    'CQ4_Stock_Price', 'CQ2_CQ4_Seasonality_Ratio', 
     'Prev_Q4_Stock_Price', 'CQ2_PQ4_Seasonality_Ratio',
-    'PBJ_Price', 'PBJ_ROC', 'PCUSEQTR_Price',
-    'PCUSEQTR_ROC', 'VIX_Price', 'VIX_ROC', 'XLP_Price', 'XLP_ROC',
-    'ANR_lag1', 'PX_LAST_lag1', 'Revenue_lag9', 'PX_LAST_MA9', 'ANR_MA20',
-    'Target_Price_Gap', 'Undervalued', 'Stock_vs_PBJ', 'Stock_vs_XLP',
-    'PX_ROC_9d', 'Revenue_ROC_20d', 'ANR_Change_Abs', 'PX_LAST_MA21',
-    'PX_LAST_MA63', 'Price_Volatility_21d', 'Fractal_Efficiency_21d',
-    'ANR_3d_change', 'ANR_21d_zscore', 'ANR_Target_Ratio', 'Q2_Premium',
-    'Q4_Discount', 'CQ2CQ4_Ratio_MA21', 'CQ2PQ4_Ratio_ROC_14d', 'PBJ_RS_3d',
-    'XLP_RS_Volatility', 'Max_Drawdown_21d', 'Recovery_Factor_63d',
-    'Q_1_Price_Ratio', 'Q_2_Price_Ratio', 'Q_3_Price_Ratio',
-    'Q_4_Price_Ratio'
+    'M2_Price', 'M2_ROC', 'PBJ_Price', 'PBJ_ROC',
+    'PCUSEQTR_Price', 'PCUSEQTR_ROC', 'VIX_Price', 'VIX_ROC', 'XLP_Price',
+    'XLP_ROC', 'ANR_lag1', 'PX_LAST_lag1', 'Revenue_lag9', 'PX_LAST_MA9',
+    'ANR_MA20', 'Target_Price_Gap', 'Undervalued', 'Stock_vs_PBJ',
+    'Stock_vs_XLP', 'PX_ROC_9d', 'Revenue_ROC_20d', 'ANR_Change_Abs',
+    'PX_LAST_MA21', 'PX_LAST_MA63', 'Price_Volatility_21d',
+    'Fractal_Efficiency_21d', 'ANR_3d_change', 'ANR_21d_zscore',
+    'ANR_Target_Ratio', 'Q2_Premium', 'Q4_Discount', 'CQ2CQ4_Ratio_MA21',
+    'CQ2PQ4_Ratio_ROC_14d', 'PBJ_RS_3d', 'XLP_RS_Volatility',
+    'Max_Drawdown_21d', 'Recovery_Factor_63d', 'Q_1_Price_Ratio',
+    'Q_2_Price_Ratio', 'Q_3_Price_Ratio', 'Q_4_Price_Ratio'
 ]
 # Excluded columns
 # (a) ANR Classification
