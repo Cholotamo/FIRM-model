@@ -2,6 +2,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, accuracy_score
+from imblearn.pipeline import Pipeline as ImbPipeline
+from imblearn.over_sampling import SMOTE
 from sklearn.model_selection import GridSearchCV
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -203,8 +205,8 @@ data.to_csv("output/feature_engineered_data.csv", index=False)
 # 10-day forward return
 data['Future_20d_Return'] = data['PX_LAST'].shift(-20) / data['PX_LAST'] - 1
 data['Label'] = data['Future_20d_Return'].apply(
-    lambda x: 'Buy' if x > 0.04
-                else 'Sell' if x < -0.04
+    lambda x: 'Buy' if x > 0.05
+                else 'Sell' if x < -0.05
                 else 'Hold'
 )
 print("TARGET VARIABLE=====================================================================================================================================================")
@@ -422,15 +424,45 @@ rf = RandomForestClassifier(
     class_weight={0: 3, 1: 1, 2: 3}
 )
 
-# Hyperparameter tuning
+# Check class distribution before SMOTE
+print("Class distribution before SMOTE:")
+print(pd.Series(y_train_encoded).value_counts())
+
+# Create SMOTE pipeline
+pipeline = ImbPipeline([
+    ('smote', SMOTE(random_state=42, sampling_strategy='auto')),
+    ('rf', RandomForestClassifier(
+        class_weight='balanced_subsample',
+        random_state=42
+    ))
+])
+
+# Update parameter grid
 param_grid = {
-    'n_estimators': [100, 200],
-    'max_depth': [5, 10],
-    'min_samples_split': [5, 10]  # Force splits to consider minority classes
+    'rf__n_estimators': [100, 200],
+    'rf__max_depth': [5, 10, 15],
+    'rf__min_samples_split': [2, 5, 10],
+    'rf__max_features': ['sqrt', 'log2']
 }
-grid_search = GridSearchCV(rf, param_grid, scoring='f1_macro', cv=5)
+
+# Update GridSearchCV
+grid_search = GridSearchCV(
+    pipeline,
+    param_grid,
+    scoring='f1_macro',
+    cv=5,
+    n_jobs=-1
+)
+
+# Fit the model with SMOTE
 grid_search.fit(X_train, y_train_encoded)
 rf = grid_search.best_estimator_
+
+# Check class distribution after SMOTE (in training data)
+X_res, y_res = SMOTE().fit_resample(X_train, y_train_encoded)
+print("\nClass distribution after SMOTE:")
+print(pd.Series(y_res).value_counts())
+
 
 # Train the model
 rf.fit(X_train, y_train_encoded)
@@ -479,7 +511,7 @@ plt.tight_layout()
 plt.show()
 
 # Get feature importances
-importance = rf.feature_importances_
+importance = rf.named_steps['rf'].feature_importances_
 feature_names = X_train.columns
 
 # Create a DataFrame for visualization
