@@ -373,10 +373,15 @@ while removal_occurred:
             max_corr = upper_triangle.loc[pair[1], pair[0]]
             max_pair = (pair[0], pair[1])
     
-    # Get feature importances
-    rf_prelim = RandomForestClassifier(n_estimators=100, random_state=42)
-    rf_prelim.fit(X_train[features_modified], y_train_encoded)
-    importances = pd.Series(rf_prelim.feature_importances_, index=features_modified)
+    # Create a SMOTE + RF pipeline for feature importance calculation
+    smote_rf_pipeline = ImbPipeline([
+        ('smote', SMOTE(random_state=42)),
+        ('rf', RandomForestClassifier(n_estimators=100, random_state=42))
+    ])
+
+    # During correlation removal iteration:
+    smote_rf_pipeline.fit(X_train[features_modified], y_train_encoded)
+    importances = pd.Series(smote_rf_pipeline.named_steps['rf'].feature_importances_, index=features_modified)
     
     # Determine which feature to remove
     if importances[max_pair[0]] >= importances[max_pair[1]]:
@@ -414,14 +419,13 @@ print("\nFINAL FEATURE SET AFTER MULTICOLLINEARITY REMOVAL:", features_modified)
 print("\nREMOVING LOW-IMPORTANCE FEATURES===================================================================================================================================")
 
 # Calculate feature importances with current set
-rf_prelim = RandomForestClassifier(n_estimators=100, random_state=42)
-rf_prelim.fit(X_train[features_modified], y_train_encoded)
-importances = pd.Series(rf_prelim.feature_importances_, index=features_modified)
+smote_rf_pipeline.fit(X_train[features_modified], y_train_encoded)
+importances = pd.Series(smote_rf_pipeline.named_steps['rf'].feature_importances_, index=features_modified)
 
 # Set dynamic thresholds (1% of max importance and absolute minimum)
 max_importance = importances.max()
-relative_threshold = max_importance * 0.01
-absolute_threshold = 0.01  # Hard minimum regardless of max
+relative_threshold = max_importance * 0.2
+absolute_threshold = 0.2  # Hard minimum regardless of max
 low_importance = importances[
     (importances < relative_threshold) & 
     (importances < absolute_threshold)
@@ -436,8 +440,8 @@ while low_importance:
     
     # Recalculate importances
     if len(features_modified) > 0:  # Prevent empty feature set
-        rf_prelim.fit(X_train[features_modified], y_train_encoded)
-        importances = pd.Series(rf_prelim.feature_importances_, index=features_modified)
+        smote_rf_pipeline.fit(X_train[features_modified], y_train_encoded)
+        importances = pd.Series(smote_rf_pipeline.named_steps['rf'].feature_importances_, index=features_modified)
         
         # Update low-importance list
         low_importance = importances[
@@ -467,14 +471,6 @@ X_test = test[features]
 
 
 print("TRAINING MODEL=====================================================================================================================================================")
-# Initialize the model
-rf = RandomForestClassifier(
-    n_estimators=200,  # Number of trees
-    max_depth=10,       # Control overfitting
-    random_state=42,    # Reproducibility
-    class_weight={0: 3, 1: 1, 2: 3}
-)
-
 # Check class distribution before SMOTE
 print("Class distribution before SMOTE:")
 print(pd.Series(y_train_encoded).value_counts())
