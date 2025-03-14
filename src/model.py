@@ -10,6 +10,22 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import os
+import threading
+import time
+import sys
+import joblib
+
+# Define a spinner animation
+def spinner(stop_event):
+    spinner_frames = ['-', '\\', '|', '/']
+    while not stop_event.is_set():  # Keep spinning until the stop event is triggered
+        for frame in spinner_frames:
+            sys.stdout.write(f'\rTraining model... {frame}')
+            sys.stdout.flush()
+            time.sleep(0.1)
+            if stop_event.is_set():  # Exit if the stop event is triggered
+                break
+
 
 # Load data
 data_folder = "data"
@@ -218,8 +234,6 @@ print("FEATURE ENGINEERING======================================================
 print(data.head())
 print(data.columns)
 print(data.shape)
-# print to csv
-data.to_csv("output/feature_engineered_data.csv", index=False)
 
 
 
@@ -240,6 +254,8 @@ data['Label'] = data['Future_20d_Return'].apply(
 )
 print("TARGET VARIABLE=====================================================================================================================================================")
 print(data['Label'].value_counts())
+# print to csv
+data.to_csv("output/feature_engineered_data.csv", index=False)
 
 
 
@@ -467,7 +483,7 @@ print(pd.Series(y_train_encoded).value_counts())
 pipeline = ImbPipeline([
     ('smote', SMOTE(random_state=42, sampling_strategy='auto')),
     ('rf', RandomForestClassifier(
-        class_weight='balanced_subsample',
+        class_weight= None,
         random_state=42
     ))
 ])
@@ -475,7 +491,7 @@ pipeline = ImbPipeline([
 # Update parameter grid
 param_grid = {
     'rf__n_estimators': [100, 200],
-    'rf__max_depth': [5, 10, 15],
+    'rf__max_depth': [10, 15, 20],
     'rf__min_samples_split': [2, 5, 10],
     'rf__max_features': ['sqrt', 'log2']
 }
@@ -489,18 +505,31 @@ grid_search = GridSearchCV(
     n_jobs=-1
 )
 
-# Fit the model with SMOTE
+# Create an event to control the spinner thread
+stop_event = threading.Event()
+
+# Start the spinner in a separate thread
+spinner_thread = threading.Thread(target=spinner, args=(stop_event,))
+spinner_thread.daemon = True  # Daemonize thread to stop it when the main program exits
+spinner_thread.start()
+
+# Train the model with SMOTE
 grid_search.fit(X_train, y_train_encoded)
 rf = grid_search.best_estimator_
 
+# Stop the spinner by setting the stop event
+stop_event.set()
+spinner_thread.join()  # Wait for the spinner thread to finish
+
+# Clear the spinner line and print completion message
+sys.stdout.write('\rTraining complete! \n')
+sys.stdout.flush()
+
 # Check class distribution after SMOTE (in training data)
-X_res, y_res = SMOTE().fit_resample(X_train, y_train_encoded)
+smote = pipeline.named_steps['smote']
+X_res, y_res = smote.fit_resample(X_train, y_train_encoded)
 print("\nClass distribution after SMOTE:")
 print(pd.Series(y_res).value_counts())
-
-
-# Train the model
-rf.fit(X_train, y_train_encoded)
 
 # Predict on test data
 y_pred = rf.predict(X_test)
@@ -511,6 +540,9 @@ y_pred_labels = le.inverse_transform(y_pred)
 # Print metrics
 print("Accuracy:", accuracy_score(y_test, y_pred_labels))
 print("\nClassification Report:\n", classification_report(y_test, y_pred_labels))
+
+# Save model
+joblib.dump(rf, "model/rf_model.pkl")
 
 
 
