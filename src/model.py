@@ -3,8 +3,9 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, accuracy_score
 from imblearn.pipeline import Pipeline as ImbPipeline
+from sklearn.pipeline import Pipeline
 from imblearn.over_sampling import SMOTE
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 import seaborn as sns
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -244,13 +245,60 @@ print(data.shape)
 
 
 # Target variable
-# ???subject to change???
-# 10-day forward return
+# ================================================================================================
+# IMPROVED LABELING STRATEGY
+# ================================================================================================
+
+# Map all signal columns to numerical values (Buy=1, Hold=0, Sell=-1)
+signal_map = {
+    # Buy should map to 0
+    'Buy': 0, 'buy': 0, 'BUY': 0, 0: 0,
+    
+    # Hold should map to 1
+    'Hold': 1, 'hold': 1, 'HOLD': 1, 1: 1,
+    
+    # Sell should map to 2
+    'Sell': 2, 'sell': 2, 'SELL': 2, 2: 2
+}
+
+signal_columns = [
+    'ANR Classification', 'RSI_Signal_ta', 'MACD_Signal_Indicator_ta',
+    'Bollinger_Signal_ta', 'SMA_Cross_Signal_ta', 'EMA_Cross_Signal_ta',
+    'Overall_Signal_ta', 'CQ2_CQ4_Label_Daily', 'CQ2_PQ4_Label_Daily'
+]
+
+# Create consensus features with corrected mapping
+data['Bullish_Signals'] = data[signal_columns].replace(signal_map).eq(0).sum(axis=1)  # Buy=0
+data['Bearish_Signals'] = data[signal_columns].replace(signal_map).eq(2).sum(axis=1)  # Sell=2
+data['Signal_Consensus'] = data[signal_columns].replace(signal_map).mode(axis=1)[0]
+
+# Calculate future returns
 data['Future_20d_Return'] = data['PX_LAST'].shift(-20) / data['PX_LAST'] - 1
-data['Label'] = data['Future_20d_Return'].apply(
-    lambda x: 'Buy' if x > 0.05
-                else 'Sell' if x < -0.05
-                else 'Hold'
+
+# Simplified 3-class labeling
+conditions = [
+    # Buy: 4+ bullish signals AND positive returns
+    (data['Bullish_Signals'] >= 4) & (data['Future_20d_Return'] > 0),
+    
+    # Sell: 4+ bearish signals AND negative returns
+    (data['Bearish_Signals'] >= 4) & (data['Future_20d_Return'] < 0)
+]
+
+choices = ['Buy', 'Sell']
+data['Label'] = np.select(conditions, choices, default='Hold')
+
+# Create confidence score (now 0-1 scale)
+data['Label_Confidence'] = np.where(
+    data['Label'] == 'Hold',
+    0,
+    (
+        np.where(
+            data['Label'] == 'Buy',
+            data['Bullish_Signals'],
+            data['Bearish_Signals']
+        ) / len(signal_columns) * 0.7
+    ) + 
+    (data['Future_20d_Return'].abs() * 0.3)
 )
 print("TARGET VARIABLE=====================================================================================================================================================")
 print(data['Label'].value_counts())
@@ -272,8 +320,12 @@ scaler = StandardScaler()
 scaled_features = scaler.fit_transform(data[['ANR', 'PX_LAST', 'Revenue', 'PBJ_Price']])
 
 # Train test split to be time-series aware
-train = data[data['Date'] < '2024-01-01']
-test = data[data['Date'] >= '2024-01-01']
+# train = data[data['Date'] < '2024-01-01']
+# test = data[data['Date'] >= '2024-01-01']
+
+# 80 20 split train test
+train = data.iloc[:int(data.shape[0] * 0.8)]
+test = data.iloc[int(data.shape[0] * 0.8):]
 
 print("FINAL DATA PREPARATION=============================================================================================================================================")
 print(train.head())
@@ -310,7 +362,7 @@ features = [
     'Q4_Discount', 'CQ2CQ4_Ratio_MA21', 'CQ2PQ4_Ratio_ROC_14d', 'PBJ_RS_3d',
     'XLP_RS_Volatility', 'Max_Drawdown_21d', 'Recovery_Factor_63d',
     'Q_1_Price_Ratio', 'Q_2_Price_Ratio', 'Q_3_Price_Ratio',
-    'Q_4_Price_Ratio'
+    'Q_4_Price_Ratio','Bullish_Signals', 'Bearish_Signals', 'Signal_Consensus'
 ]
 # Excluded columns
 # (a) ANR Classification
@@ -345,7 +397,7 @@ for label, encoded in zip(le.classes_, range(len(le.classes_))):
 
 
 
-# Multicollinearity removal process
+# # Multicollinearity removal process
 print("\nREMOVING MULTICOLLINEAR FEATURES===================================================================================================================================")
 features_modified = features.copy()
 removal_occurred = True
@@ -471,61 +523,55 @@ X_test = test[features]
 
 
 print("TRAINING MODEL=====================================================================================================================================================")
-# Check class distribution before SMOTE
-print("Class distribution before SMOTE:")
-print(pd.Series(y_train_encoded).value_counts())
 
-# Create SMOTE pipeline
-pipeline = ImbPipeline([
-    ('smote', SMOTE(random_state=42, sampling_strategy='auto')),
+# Use simpler pipeline without SMOTE
+pipeline = Pipeline([
     ('rf', RandomForestClassifier(
-        class_weight= None,
+        class_weight='balanced_subsample',  # Handles imbalance
         random_state=42
     ))
 ])
 
-# Update parameter grid
+# Safer parameter grid for time-series
 param_grid = {
     'rf__n_estimators': [100, 200],
-    'rf__max_depth': [10, 15, 20],
-    'rf__min_samples_split': [2, 5, 10],
-    'rf__max_features': ['sqrt', 'log2']
+    'rf__max_depth': [10, 15],
+    'rf__min_samples_split': [5, 10],
+    'rf__max_features': ['sqrt', 0.33]
 }
 
-# Update GridSearchCV
+# Time-series cross-validation
+tscv = TimeSeriesSplit(n_splits=5)
+
 grid_search = GridSearchCV(
     pipeline,
     param_grid,
     scoring='f1_macro',
-    cv=5,
-    n_jobs=-1
+    cv=tscv,
+    n_jobs=-1,
+    error_score='raise'
 )
 
-# Create an event to control the spinner thread
+# Start spinner
 stop_event = threading.Event()
-
-# Start the spinner in a separate thread
 spinner_thread = threading.Thread(target=spinner, args=(stop_event,))
-spinner_thread.daemon = True  # Daemonize thread to stop it when the main program exits
+spinner_thread.daemon = True
 spinner_thread.start()
 
-# Train the model with SMOTE
-grid_search.fit(X_train, y_train_encoded)
-rf = grid_search.best_estimator_
+try:
+    grid_search.fit(X_train, y_train_encoded)
+    rf = grid_search.best_estimator_
+except Exception as e:
+    stop_event.set()
+    spinner_thread.join()
+    print(f"\nTraining error: {str(e)}")
+    sys.exit(1)
 
-# Stop the spinner by setting the stop event
+# Cleanup spinner
 stop_event.set()
-spinner_thread.join()  # Wait for the spinner thread to finish
-
-# Clear the spinner line and print completion message
+spinner_thread.join()
 sys.stdout.write('\rTraining complete! \n')
 sys.stdout.flush()
-
-# Check class distribution after SMOTE (in training data)
-smote = pipeline.named_steps['smote']
-X_res, y_res = smote.fit_resample(X_train, y_train_encoded)
-print("\nClass distribution after SMOTE:")
-print(pd.Series(y_res).value_counts())
 
 # Predict on test data
 y_pred = rf.predict(X_test)
