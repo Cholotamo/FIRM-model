@@ -33,6 +33,19 @@ for file in csv_files:
         df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "PCUSEQTR_Price", "PCUSEQTR_ROC"], skiprows=1)
     elif file == "VIX_HP.csv":
         df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "VIX_Price", "VIX_ROC"], skiprows=1)
+    elif file == "KO_HP_with_signals.csv":
+        df = pd.read_csv(
+            file_path,
+            parse_dates=["Date"],
+            names=[
+                "Date", "PX_LAST_ta", "PX_BID_ta", "Price_ta", "RSI_ta", "RSI_Signal_ta", 
+                "MACD_Line_ta", "MACD_Signal_ta", "MACD_Hist_ta", "MACD_Signal_Indicator_ta", 
+                "Bollinger_SMA_ta", "Bollinger_Upper_ta", "Bollinger_Lower_ta", 
+                "Bollinger_Signal_ta", "SMA_9_ta", "SMA_20_ta", "EMA_9_ta", "EMA_20_ta", 
+                "SMA_Cross_Signal_ta", "EMA_Cross_Signal_ta", "Overall_Signal_ta"
+            ],
+            skiprows=1
+        )
     else:
         df = pd.read_csv(file_path, parse_dates=["Date"])
     
@@ -175,6 +188,22 @@ for q in ['Q_1', 'Q_2', 'Q_3', 'Q_4']:
 # FINAL CLEANUP
 # ================================================================================================
 
+signal_mapping = {"buy": 0, "sell": 2, "hold": 1}
+
+def is_signal_column(column):
+    if pd.api.types.is_string_dtype(column):
+        # Check if column contains any of the signal values
+        unique_values = column.str.lower().unique()
+        signal_values = {"buy", "hold", "sell"}
+        return any(value in signal_values for value in unique_values)
+    return False
+
+signal_columns = [col for col in data.columns if is_signal_column(data[col])]
+
+# Map signals to numerical values
+for col in signal_columns:
+    data[col] = data[col].str.lower().map(signal_mapping)
+
 # Replace inf and large values with NaN
 data = data.replace([np.inf, -np.inf], np.nan)
 
@@ -245,21 +274,27 @@ print("INITIALIZING FEATURES====================================================
 # Feature selection
 features = [
     'CONCCONF_Price', 'CONCCONF_ROC', 'ANR', 'Target Price',
-    'ANR Change', 'Revenue', 'Revenue_ROC', 'PX_LAST',
-    'HP_ROC', 'Stock Price', 'Q_1', 'Q_2', 'Q_3', 'Q_4', 'CQ2_Stock_Price',
-    'CQ4_Stock_Price', 'CQ2_CQ4_Seasonality_Ratio', 
-    'Prev_Q4_Stock_Price', 'CQ2_PQ4_Seasonality_Ratio',
-    'M2_Price', 'M2_ROC', 'PBJ_Price', 'PBJ_ROC',
-    'PCUSEQTR_Price', 'PCUSEQTR_ROC', 'VIX_Price', 'VIX_ROC', 'XLP_Price',
-    'XLP_ROC', 'ANR_lag1', 'PX_LAST_lag1', 'Revenue_lag9', 'PX_LAST_MA9',
-    'ANR_MA20', 'Target_Price_Gap', 'Undervalued', 'Stock_vs_PBJ',
-    'Stock_vs_XLP', 'PX_ROC_9d', 'Revenue_ROC_20d', 'ANR_Change_Abs',
-    'PX_LAST_MA21', 'PX_LAST_MA63', 'Price_Volatility_21d',
-    'Fractal_Efficiency_21d', 'ANR_3d_change', 'ANR_21d_zscore',
-    'ANR_Target_Ratio', 'Q2_Premium', 'Q4_Discount', 'CQ2CQ4_Ratio_MA21',
-    'CQ2PQ4_Ratio_ROC_14d', 'PBJ_RS_3d', 'XLP_RS_Volatility',
-    'Max_Drawdown_21d', 'Recovery_Factor_63d', 'Q_1_Price_Ratio',
-    'Q_2_Price_Ratio', 'Q_3_Price_Ratio', 'Q_4_Price_Ratio'
+    'ANR Classification', 'ANR Change', 'Revenue', 'Revenue_ROC', 'PX_LAST',
+    'HP_ROC', 'PX_LAST_ta', 'PX_BID_ta', 'Price_ta', 'RSI_ta',
+    'RSI_Signal_ta', 'MACD_Line_ta', 'MACD_Signal_ta', 'MACD_Hist_ta',
+    'MACD_Signal_Indicator_ta', 'Bollinger_SMA_ta', 'Bollinger_Upper_ta',
+    'Bollinger_Lower_ta', 'Bollinger_Signal_ta', 'SMA_9_ta', 'SMA_20_ta',
+    'EMA_9_ta', 'EMA_20_ta', 'SMA_Cross_Signal_ta', 'EMA_Cross_Signal_ta',
+    'Overall_Signal_ta', 'Stock Price', 'Q_1', 'Q_2', 'Q_3', 'Q_4',
+    'CQ2_Stock_Price', 'CQ4_Stock_Price', 'CQ2_CQ4_Seasonality_Ratio',
+    'CQ2_CQ4_Label_Daily', 'Prev_Q4_Stock_Price',
+    'CQ2_PQ4_Seasonality_Ratio', 'CQ2_PQ4_Label_Daily', 'M2_Price',
+    'M2_ROC', 'PBJ_Price', 'PBJ_ROC', 'PCUSEQTR_Price', 'PCUSEQTR_ROC',
+    'VIX_Price', 'VIX_ROC', 'XLP_Price', 'XLP_ROC', 'ANR_lag1',
+    'PX_LAST_lag1', 'Revenue_lag9', 'PX_LAST_MA9', 'ANR_MA20',
+    'Target_Price_Gap', 'Undervalued', 'Stock_vs_PBJ', 'Stock_vs_XLP',
+    'PX_ROC_9d', 'Revenue_ROC_20d', 'ANR_Change_Abs', 'PX_LAST_MA21',
+    'PX_LAST_MA63', 'Price_Volatility_21d', 'Fractal_Efficiency_21d',
+    'ANR_3d_change', 'ANR_21d_zscore', 'ANR_Target_Ratio', 'Q2_Premium',
+    'Q4_Discount', 'CQ2CQ4_Ratio_MA21', 'CQ2PQ4_Ratio_ROC_14d', 'PBJ_RS_3d',
+    'XLP_RS_Volatility', 'Max_Drawdown_21d', 'Recovery_Factor_63d',
+    'Q_1_Price_Ratio', 'Q_2_Price_Ratio', 'Q_3_Price_Ratio',
+    'Q_4_Price_Ratio'
 ]
 # Excluded columns
 # (a) ANR Classification

@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import os
 
 def calculate_rsi(series, period=14):
     """
@@ -84,8 +85,16 @@ def overall_signal(rsi_sig, macd_sig, bb_sig):
         return 'Hold'
 
 def main():
+    # Define input and output directories
+    input_dir = "input_data_cleaning"
+    output_dir = "output_data_cleaning"
+    os.makedirs(output_dir, exist_ok=True)  # Ensure the output directory exists
+
+    # Define input and output file paths
+    input_file = os.path.join(input_dir, "KO_HP.xlsx")
+    output_file = os.path.join(output_dir, "KO_HP_with_signals.csv")
+
     # Read the Excel file, skipping metadata rows so that row 7 is the header.
-    input_file = "KO_HP.xlsx"
     df = pd.read_excel(input_file, skiprows=6)
     
     print("Columns read by pandas:", df.columns.tolist())
@@ -127,7 +136,6 @@ def main():
     df['EMA_20'] = df['Price'].ewm(span=20, adjust=False).mean()
     
     # Determine crossovers for SMA and EMA.
-    # We detect a crossover by comparing the previous difference in sign to the current.
     df['SMA_diff'] = df['SMA_9'] - df['SMA_20']
     df['EMA_diff'] = df['EMA_9'] - df['EMA_20']
     
@@ -160,9 +168,8 @@ def main():
     # Rearrange the dataframe columns.
     df = df[ordered_cols]
     
-    # Export the final DataFrame to a new Excel file.
-    output_file = "KO_HP_with_signals.xlsx"
-    df.to_excel(output_file, index=False)
+    # Export the final DataFrame to a new CSV file.
+    df.to_csv(output_file, index=False)
     print(f"Analysis complete. Results exported to: {output_file}")
 
 if __name__ == "__main__":
