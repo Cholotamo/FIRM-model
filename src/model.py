@@ -14,6 +14,7 @@ import threading
 import time
 import sys
 import joblib
+from xgboost import XGBClassifier
 
 # Define a spinner animation
 def spinner(stop_event):
@@ -470,26 +471,34 @@ X_test = test[features]
 
 
 
+# Modify the pipeline section
 print("TRAINING MODEL=====================================================================================================================================================")
 # Check class distribution before SMOTE
 print("Class distribution before SMOTE:")
 print(pd.Series(y_train_encoded).value_counts())
 
-# Create SMOTE pipeline
+# Create SMOTE pipeline with XGBoost
 pipeline = ImbPipeline([
     ('smote', SMOTE(random_state=42, sampling_strategy='auto')),
-    ('rf', RandomForestClassifier(
-        class_weight= None,
-        random_state=42
+    ('xgb', XGBClassifier(
+        objective='multi:softmax',
+        num_class=3,
+        random_state=42,
+        eval_metric='mlogloss',
+        use_label_encoder=False,
+        tree_method='hist'  # More efficient for large datasets
     ))
 ])
 
-# Update parameter grid
+# Update parameter grid for XGBoost
 param_grid = {
-    'rf__n_estimators': [100, 200],
-    'rf__max_depth': [10, 15, 20],
-    'rf__min_samples_split': [2, 5, 10],
-    'rf__max_features': ['sqrt', 'log2']
+    'xgb__n_estimators': [100, 200],
+    'xgb__max_depth': [3, 5, 7],
+    'xgb__learning_rate': [0.05, 0.1],
+    'xgb__subsample': [0.8, 1.0],
+    'xgb__colsample_bytree': [0.8, 1.0],
+    'xgb__gamma': [0, 0.1, 0.2],
+    'xgb__scale_pos_weight': [None, [1, 1, 3]]  # Custom class weights [Buy, Hold, Sell]
 }
 
 # Update GridSearchCV
@@ -501,6 +510,10 @@ grid_search = GridSearchCV(
     n_jobs=-1
 )
 
+# [Keep the spinner code the same]
+
+
+
 # Create an event to control the spinner thread
 stop_event = threading.Event()
 
@@ -511,7 +524,7 @@ spinner_thread.start()
 
 # Train the model with SMOTE
 grid_search.fit(X_train, y_train_encoded)
-rf = grid_search.best_estimator_
+best_xgb = grid_search.best_estimator_
 
 # Stop the spinner by setting the stop event
 stop_event.set()
@@ -528,7 +541,7 @@ print("\nClass distribution after SMOTE:")
 print(pd.Series(y_res).value_counts())
 
 # Predict on test data
-y_pred = rf.predict(X_test)
+y_pred = best_xgb.predict(X_test)
 
 # Decode labels back to original strings
 y_pred_labels = le.inverse_transform(y_pred)
@@ -538,7 +551,7 @@ print("Accuracy:", accuracy_score(y_test, y_pred_labels))
 print("\nClassification Report:\n", classification_report(y_test, y_pred_labels))
 
 # Save model
-joblib.dump(rf, "model/rf_model.pkl")
+joblib.dump(best_xgb, "model/xgb_model.pkl")
 
 
 
@@ -574,7 +587,8 @@ plt.tight_layout()
 plt.show()
 
 # Get feature importances
-importance = rf.named_steps['rf'].feature_importances_
+# Modify feature importance plot
+importance = best_xgb.named_steps['xgb'].feature_importances_
 feature_names = X_train.columns
 
 # Create a DataFrame for visualization
