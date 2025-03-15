@@ -583,6 +583,7 @@ y_pred_labels = le.inverse_transform(y_pred)
 print("Accuracy:", accuracy_score(y_test, y_pred_labels))
 print("\nClassification Report:\n", classification_report(y_test, y_pred_labels))
 
+
 # Save model
 joblib.dump(rf, "model/rf_model.pkl")
 
@@ -642,4 +643,30 @@ plt.show()
 
 
 
-# Use the model to make predictions
+# Get predicted probabilities and labels
+test['Predicted_Probability'] = rf.predict_proba(X_test).max(axis=1)
+test['Predicted_Label'] = le.inverse_transform(rf.predict(X_test))
+
+# Add confidence interpretation
+test['Confidence'] = np.where(
+    test['Predicted_Probability'] > 0.7, 'High',
+    np.where(test['Predicted_Probability'] > 0.5, 'Medium', 'Low')
+)
+
+# Print predictions with probabilities
+print("\nFinal Predictions on Test Set:")
+print(test[['Date', 'Label', 'Predicted_Label', 'Predicted_Probability', 'Confidence']].tail())
+
+# Save full predictions
+test[['Date', 'PX_LAST', 'Label', 'Predicted_Label', 'Predicted_Probability']]\
+    .to_csv("output/predictions.csv", index=False)
+
+# Optional: Plot predictions vs actual
+plt.figure(figsize=(12,6))
+plt.plot(test['Date'], test['Label'].map({'Buy': 1, 'Hold': 0, 'Sell': -1}), label='Actual')
+plt.plot(test['Date'], test['Predicted_Label'].map({'Buy': 1, 'Hold': 0, 'Sell': -1}), 
+         alpha=0.7, linestyle='--', label='Predicted')
+plt.title("Actual vs Predicted Market Positions")
+plt.ylabel("Position (Buy=1, Hold=0, Sell=-1)")
+plt.legend()
+plt.show()
