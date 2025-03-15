@@ -275,13 +275,14 @@ data['Signal_Consensus'] = data[signal_columns].replace(signal_map).mode(axis=1)
 # Calculate future returns
 data['Future_20d_Return'] = data['PX_LAST'].shift(-20) / data['PX_LAST'] - 1
 
-# Simplified 3-class labeling
+# Dynamic threshold calculation
+buy_quantile = data['Future_20d_Return'].quantile(0.15) # lowering this will increase the buy signals
+sell_quantile = data['Future_20d_Return'].quantile(0.65) # lowering this will increase the sell signals
+
 conditions = [
-    # Buy: 4+ bullish signals AND positive returns
-    (data['Bullish_Signals'] >= 4) & (data['Future_20d_Return'] > 0),
+    (data['Bullish_Signals'] >= 4) & (data['Future_20d_Return'] > buy_quantile),
     
-    # Sell: 4+ bearish signals AND negative returns
-    (data['Bearish_Signals'] >= 4) & (data['Future_20d_Return'] < 0)
+    (data['Bearish_Signals'] >= 4) & (data['Future_20d_Return'] < sell_quantile)
 ]
 
 choices = ['Buy', 'Sell']
