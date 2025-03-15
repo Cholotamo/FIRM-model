@@ -410,10 +410,10 @@ while removal_occurred:
     # Find high correlation pairs
     high_corr = [(col1, col2) for col1 in upper_triangle.columns 
                 for col2 in upper_triangle.index 
-                if upper_triangle.loc[col2, col1] > 0.6]
+                if upper_triangle.loc[col2, col1] > 0.9]
     
     if not high_corr:
-        print("No highly correlated pairs remaining (r > 0.6).")
+        print("No highly correlated pairs remaining (r > 0.9).")
         removal_occurred = False
         break
     
