@@ -320,12 +320,12 @@ scaler = StandardScaler()
 scaled_features = scaler.fit_transform(data[['ANR', 'PX_LAST', 'Revenue', 'PBJ_Price']])
 
 # Train test split to be time-series aware
-# train = data[data['Date'] < '2024-01-01']
-# test = data[data['Date'] >= '2024-01-01']
+train = data[data['Date'] < '2024-01-01']
+test = data[data['Date'] >= '2024-01-01']
 
 # 80 20 split train test
-train = data.iloc[:int(data.shape[0] * 0.8)]
-test = data.iloc[int(data.shape[0] * 0.8):]
+# train = data.iloc[:int(data.shape[0] * 0.8)]
+# test = data.iloc[int(data.shape[0] * 0.8):]
 
 print("FINAL DATA PREPARATION=============================================================================================================================================")
 print(train.head())
@@ -644,11 +644,11 @@ plt.show()
 
 
 # Get predicted probabilities and labels
-test['Predicted_Probability'] = rf.predict_proba(X_test).max(axis=1)
-test['Predicted_Label'] = le.inverse_transform(rf.predict(X_test))
+test.loc[:, 'Predicted_Probability'] = rf.predict_proba(X_test).max(axis=1)
+test.loc[:, 'Predicted_Label'] = le.inverse_transform(rf.predict(X_test))
 
 # Add confidence interpretation
-test['Confidence'] = np.where(
+test.loc[:, 'Confidence'] = np.where(
     test['Predicted_Probability'] > 0.7, 'High',
     np.where(test['Predicted_Probability'] > 0.5, 'Medium', 'Low')
 )
