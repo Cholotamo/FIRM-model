@@ -524,10 +524,17 @@ X_test = test[features]
 
 print("TRAINING MODEL=====================================================================================================================================================")
 
-# Use simpler pipeline without SMOTE
+# Get encoded class labels from your LabelEncoder
+class_weights = {
+    0: 3,  # Buy (encoded as 0)
+    1: 1,  # Hold (encoded as 1)
+    2: 2   # Sell (encoded as 2)
+}
+
+# Initialize model with correct class weights
 pipeline = Pipeline([
     ('rf', RandomForestClassifier(
-        class_weight='balanced_subsample',  # Handles imbalance
+        class_weight=class_weights,
         random_state=42
     ))
 ])
@@ -643,14 +650,42 @@ plt.show()
 
 
 
-# Get predicted probabilities and labels
-test.loc[:, 'Predicted_Probability'] = rf.predict_proba(X_test).max(axis=1)
-test.loc[:, 'Predicted_Label'] = le.inverse_transform(rf.predict(X_test))
+# Get predicted probabilities for all classes
+probs = rf.predict_proba(X_test)
 
-# Add confidence interpretation
-test.loc[:, 'Confidence'] = np.where(
-    test['Predicted_Probability'] > 0.7, 'High',
-    np.where(test['Predicted_Probability'] > 0.5, 'Medium', 'Low')
+# Define asymmetric thresholds
+BUY_THRESHOLD = 0.65  # Increased from default 0.5
+SELL_THRESHOLD = 0.65  # Lowered to capture more sells
+
+# Create predictions using custom thresholds
+test.loc[:, 'Predicted_Label'] = np.select(
+    [
+        probs[:, 0] > BUY_THRESHOLD,  # Buy class (index 0)
+        probs[:, 2] > SELL_THRESHOLD   # Sell class (index 2)
+    ],
+    ['Buy', 'Sell'],
+    default='Hold'
+)
+
+# Get probability of the predicted class
+test.loc[:, 'Predicted_Probability'] = np.where(
+    test['Predicted_Label'] == 'Buy',
+    probs[:, 0],
+    np.where(
+        test['Predicted_Label'] == 'Sell',
+        probs[:, 2],
+        probs[:, 1]  # Hold probability
+    )
+)
+
+# Add confidence interpretation based on thresholds
+test.loc[:, 'Confidence'] = np.select(
+    [
+        test['Predicted_Probability'] > 0.7,
+        test['Predicted_Probability'] > 0.5
+    ],
+    ['High', 'Medium'],
+    default='Low'
 )
 
 # Print predictions with probabilities
@@ -666,7 +701,7 @@ plt.figure(figsize=(12,6))
 plt.plot(test['Date'], test['Label'].map({'Buy': 1, 'Hold': 0, 'Sell': -1}), label='Actual')
 plt.plot(test['Date'], test['Predicted_Label'].map({'Buy': 1, 'Hold': 0, 'Sell': -1}), 
          alpha=0.7, linestyle='--', label='Predicted')
-plt.title("Actual vs Predicted Market Positions")
+plt.title("Actual vs Predicted Market Positions (Asymmetric Thresholds)")
 plt.ylabel("Position (Buy=1, Hold=0, Sell=-1)")
 plt.legend()
 plt.show()
