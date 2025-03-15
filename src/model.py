@@ -276,7 +276,7 @@ data['Signal_Consensus'] = data[signal_columns].replace(signal_map).mode(axis=1)
 data['Future_20d_Return'] = data['PX_LAST'].shift(-20) / data['PX_LAST'] - 1
 
 # Dynamic threshold calculation
-buy_quantile = data['Future_20d_Return'].quantile(0.15) # lowering this will increase the buy signals
+buy_quantile = data['Future_20d_Return'].quantile(0.35) # lowering this will increase the buy signals
 sell_quantile = data['Future_20d_Return'].quantile(0.65) # lowering this will increase the sell signals
 
 conditions = [
@@ -318,11 +318,38 @@ data.to_csv("output/feature_engineered_data.csv", index=False)
 data.ffill(inplace=True)  # Forward-fill missing values
 data.dropna(inplace=True)  # Drop remaining NaN rows
 scaler = StandardScaler()
-scaled_features = scaler.fit_transform(data[['ANR', 'PX_LAST', 'Revenue', 'PBJ_Price']])
+scaled_features = scaler.fit_transform(data[[    
+    'CONCCONF_Price', 'CONCCONF_ROC', 'ANR', 'Target Price',
+    'ANR Change', 'Revenue', 'Revenue_ROC', 'PX_LAST',
+    'HP_ROC', 'PX_LAST_ta', 'PX_BID_ta', 'Price_ta', 'RSI_ta',
+    'MACD_Line_ta', 'MACD_Signal_ta', 'MACD_Hist_ta',
+    'Bollinger_SMA_ta', 'Bollinger_Upper_ta',
+    'Bollinger_Lower_ta', 'SMA_9_ta', 'SMA_20_ta',
+    'EMA_9_ta', 'EMA_20_ta', 
+    'Stock Price', 
+    'CQ2_Stock_Price', 'CQ4_Stock_Price', 'CQ2_CQ4_Seasonality_Ratio',
+    'Prev_Q4_Stock_Price',
+    'CQ2_PQ4_Seasonality_Ratio', 'M2_Price',
+    'M2_ROC', 'PBJ_Price', 'PBJ_ROC', 'PCUSEQTR_Price', 'PCUSEQTR_ROC',
+    'VIX_Price', 'VIX_ROC', 'XLP_Price', 'XLP_ROC', 'ANR_lag1',
+    'PX_LAST_lag1', 'Revenue_lag9', 'PX_LAST_MA9', 'ANR_MA20',
+    'Target_Price_Gap', 'Stock_vs_PBJ', 'Stock_vs_XLP',
+    'PX_ROC_9d', 'Revenue_ROC_20d', 'ANR_Change_Abs', 'PX_LAST_MA21',
+    'PX_LAST_MA63', 'Price_Volatility_21d', 'Fractal_Efficiency_21d',
+    'ANR_3d_change', 'ANR_21d_zscore', 'ANR_Target_Ratio', 'Q2_Premium',
+    'Q4_Discount', 'CQ2CQ4_Ratio_MA21', 'CQ2PQ4_Ratio_ROC_14d', 'PBJ_RS_3d',
+    'XLP_RS_Volatility', 'Max_Drawdown_21d', 'Recovery_Factor_63d',
+    'Q_1_Price_Ratio', 'Q_2_Price_Ratio', 'Q_3_Price_Ratio',
+    'Q_4_Price_Ratio']])
 
-# Train test split to be time-series aware
-train = data[data['Date'] < '2024-01-01']
-test = data[data['Date'] >= '2024-01-01']
+# Time-series split (preserves order)
+split_date = data['Date'].quantile(0.8)  # 80% training cutoff
+train = data[data['Date'] <= split_date]
+test = data[data['Date'] > split_date]
+
+# Verify temporal integrity
+print(f"Train Period: {train['Date'].min()} to {train['Date'].max()}")
+print(f"Test Period:  {test['Date'].min()} to {test['Date'].max()}")
 
 # 80 20 split train test
 # train = data.iloc[:int(data.shape[0] * 0.8)]
