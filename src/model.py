@@ -1,7 +1,7 @@
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, accuracy_score
+from sklearn.metrics import classification_report, accuracy_score, f1_score, make_scorer
 from imblearn.pipeline import Pipeline as ImbPipeline
 from imblearn.over_sampling import SMOTE
 from sklearn.model_selection import GridSearchCV
@@ -14,6 +14,7 @@ import threading
 import time
 import sys
 import joblib
+from sklearn.utils import compute_class_weight
 from xgboost import XGBClassifier
 
 # Define a spinner animation
@@ -42,9 +43,9 @@ for file in csv_files:
         df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "PBJ_Price", "PBJ_ROC"], skiprows=1)
     elif file == "xlp_hp.csv":
         df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "XLP_Price", "XLP_ROC"], skiprows=1)
-    elif file == "CONCCONF_Daily_Interpolated.csv":
+    elif file == "CONCCONF_Daily_Filled.csv":
         df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "CONCCONF_Price", "CONCCONF_ROC"], skiprows=1) 
-    elif file == "M2_HP_Daily_Interpolated.csv":
+    elif file == "M2_HP_Daily_Filled.csv":
         df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "M2_Price", "M2_ROC"], skiprows=1) 
     elif file == "PCUSEQTR_HP.csv":
         df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "PCUSEQTR_Price", "PCUSEQTR_ROC"], skiprows=1)
@@ -273,8 +274,6 @@ data.to_csv("output/feature_engineered_data.csv", index=False)
 # Final data preparation
 data.ffill(inplace=True)  # Forward-fill missing values
 data.dropna(inplace=True)  # Drop remaining NaN rows
-scaler = StandardScaler()
-scaled_features = scaler.fit_transform(data[['ANR', 'PX_LAST', 'Revenue', 'PBJ_Price']])
 
 # Train test split to be time-series aware
 train = data[data['Date'] < '2024-01-01']
@@ -363,10 +362,10 @@ while removal_occurred:
     # Find high correlation pairs
     high_corr = [(col1, col2) for col1 in upper_triangle.columns 
                 for col2 in upper_triangle.index 
-                if upper_triangle.loc[col2, col1] > 0.6]
+                if upper_triangle.loc[col2, col1] > 0.7]
     
     if not high_corr:
-        print("No highly correlated pairs remaining (r > 0.6).")
+        print("No highly correlated pairs remaining (r > 0.7).")
         removal_occurred = False
         break
     
@@ -379,14 +378,24 @@ while removal_occurred:
             max_pair = (pair[0], pair[1])
     
     # Create a SMOTE + RF pipeline for feature importance calculation
-    smote_rf_pipeline = ImbPipeline([
+    smote_xgb_pipeline = ImbPipeline([
+        ('scaler', StandardScaler()),
         ('smote', SMOTE(random_state=42)),
-        ('rf', RandomForestClassifier(n_estimators=100, random_state=42))
-    ])
+        ('xgb', XGBClassifier(
+            objective='multi:softprob',  # Changed to softprob for better weight handling
+            num_class=3,
+            random_state=42,
+            eval_metric='mlogloss',
+            tree_method='hist',
+            # Add class weighting through objective parameters
+            min_child_weight=0.01,  # Helps with class imbalance
+            max_delta_step=1        # Recommended for imbalanced classes
+        ))
+])
 
     # During correlation removal iteration:
-    smote_rf_pipeline.fit(X_train[features_modified], y_train_encoded)
-    importances = pd.Series(smote_rf_pipeline.named_steps['rf'].feature_importances_, index=features_modified)
+    smote_xgb_pipeline.fit(X_train[features_modified], y_train_encoded)
+    importances = pd.Series(smote_xgb_pipeline.named_steps['xgb'].feature_importances_, index=features_modified)
     
     # Determine which feature to remove
     if importances[max_pair[0]] >= importances[max_pair[1]]:
@@ -424,13 +433,13 @@ print("\nFINAL FEATURE SET AFTER MULTICOLLINEARITY REMOVAL:", features_modified)
 print("\nREMOVING LOW-IMPORTANCE FEATURES===================================================================================================================================")
 
 # Calculate feature importances with current set
-smote_rf_pipeline.fit(X_train[features_modified], y_train_encoded)
-importances = pd.Series(smote_rf_pipeline.named_steps['rf'].feature_importances_, index=features_modified)
+smote_xgb_pipeline.fit(X_train[features_modified], y_train_encoded)
+importances = pd.Series(smote_xgb_pipeline.named_steps['xgb'].feature_importances_, index=features_modified)
 
 # Set dynamic thresholds (1% of max importance and absolute minimum)
 max_importance = importances.max()
-relative_threshold = max_importance * 0.4
-absolute_threshold = 0.4  # Hard minimum regardless of max
+relative_threshold = max_importance * 0.1
+absolute_threshold = 0.1  # Hard minimum regardless of max
 low_importance = importances[
     (importances < relative_threshold) & 
     (importances < absolute_threshold)
@@ -445,8 +454,8 @@ while low_importance:
     
     # Recalculate importances
     if len(features_modified) > 0:  # Prevent empty feature set
-        smote_rf_pipeline.fit(X_train[features_modified], y_train_encoded)
-        importances = pd.Series(smote_rf_pipeline.named_steps['rf'].feature_importances_, index=features_modified)
+        smote_xgb_pipeline.fit(X_train[features_modified], y_train_encoded)
+        importances = pd.Series(smote_xgb_pipeline.named_steps['xgb'].feature_importances_, index=features_modified)
         
         # Update low-importance list
         low_importance = importances[
@@ -477,39 +486,50 @@ X_test = test[features]
 
 # Modify the pipeline section
 print("TRAINING MODEL=====================================================================================================================================================")
+# 1. Compute class weights BEFORE SMOTE
+classes = np.unique(y_train_encoded)
+class_weights = compute_class_weight('balanced', classes=classes, y=y_train_encoded)
+
 # Check class distribution before SMOTE
 print("Class distribution before SMOTE:")
 print(pd.Series(y_train_encoded).value_counts())
 
 # Create SMOTE pipeline with XGBoost
 pipeline = ImbPipeline([
-    ('smote', SMOTE(random_state=42, sampling_strategy='auto')),
+    ('scaler', StandardScaler()),
+    ('smote', SMOTE(random_state=42)),
     ('xgb', XGBClassifier(
-        objective='multi:softmax',
+        objective='multi:softprob',  # Changed to softprob for better weight handling
         num_class=3,
         random_state=42,
         eval_metric='mlogloss',
-        use_label_encoder=False,
-        tree_method='hist'  # More efficient for large datasets
+        tree_method='hist',
+        # Add class weighting through objective parameters
+        min_child_weight=0.01,  # Helps with class imbalance
+        max_delta_step=1        # Recommended for imbalanced classes
     ))
 ])
+
 
 # Update parameter grid for XGBoost
 param_grid = {
     'xgb__n_estimators': [100, 200],
     'xgb__max_depth': [3, 5, 7],
     'xgb__learning_rate': [0.05, 0.1],
-    'xgb__subsample': [0.8, 1.0],
-    'xgb__colsample_bytree': [0.8, 1.0],
-    'xgb__gamma': [0, 0.1, 0.2],
-    'xgb__scale_pos_weight': [None, [1, 1, 3]]  # Custom class weights [Buy, Hold, Sell]
+    'xgb__subsample': [0.8, 0.9],
+    'xgb__colsample_bytree': [0.8, 0.9],
+    'xgb__gamma': [0, 0.1]
 }
+
+#  Create custom scoring that incorporates weights
+def weighted_f1(y_true, y_pred):
+    return f1_score(y_true, y_pred, average='weighted')
 
 # Update GridSearchCV
 grid_search = GridSearchCV(
     pipeline,
     param_grid,
-    scoring='f1_macro',
+    scoring='balanced_accuracy',  # Focuses on balanced class performance
     cv=5,
     n_jobs=-1
 )
@@ -604,7 +624,7 @@ feature_importance = pd.DataFrame({
 # Plot
 plt.figure(figsize=(10, 6))
 plt.barh(feature_importance['Feature'], feature_importance['Importance'])
-plt.title('Random Forest Feature Importance')
+plt.title('Feature Importance')
 plt.xlabel('Importance Score')
 plt.gca().invert_yaxis()  # Most important at top
 plt.show()
