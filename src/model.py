@@ -65,9 +65,9 @@ for file in csv_files:
             skiprows=1
         )
     elif file == "ko_daily_accts_payable.csv":
-        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "Accts_Payable", "Accts_Payable_ROC"], skiprows=1) # removed due to negative effect on model
+        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "Accts_Payable", "Accts_Payable_ROC"], skiprows=1) 
     elif file == "ko_daily_sharesOutstanding.csv":
-        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "Shares Outstanding", "Shares_Outstanding_ROC"], skiprows=1) # removed due to negative effect on model
+        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "Shares Outstanding", "Shares_Outstanding_ROC"], skiprows=1)
     else:
         df = pd.read_csv(file_path, parse_dates=["Date"])
     
@@ -254,8 +254,8 @@ print(data.shape)
 # 10-day forward return
 data['Future_9d_Return'] = data['PX_LAST'].shift(-9) / data['PX_LAST'] - 1
 data['Label'] = data['Future_9d_Return'].apply(
-    lambda x: 'Buy' if x > 0.023
-                else 'Sell' if x < -0.023
+    lambda x: 'Buy' if x > 0.03
+                else 'Sell' if x < -0.03
                 else 'Hold'
 )
 print("TARGET VARIABLE=====================================================================================================================================================")
@@ -314,7 +314,7 @@ features = [
     'Q4_Discount', 'CQ2CQ4_Ratio_MA21', 'CQ2PQ4_Ratio_ROC_14d', 'PBJ_RS_3d',
     'XLP_RS_Volatility', 'Max_Drawdown_21d', 'Recovery_Factor_63d',
     'Q_1_Price_Ratio', 'Q_2_Price_Ratio', 'Q_3_Price_Ratio',
-    'Q_4_Price_Ratio'
+    'Q_4_Price_Ratio', 'Accts_Payable', 'Accts_Payable_ROC', 'Shares Outstanding', 'Shares_Outstanding_ROC'
 ]
 # Excluded columns
 # (a) ANR Classification
