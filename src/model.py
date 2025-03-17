@@ -63,6 +63,10 @@ for file in csv_files:
             ],
             skiprows=1
         )
+    elif file == "ko_daily_accts_payable.csv":
+        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "Accts_Payable", "Accts_Payable_ROC"], skiprows=1) # removed due to negative effect on model
+    elif file == "ko_daily_sharesOutstanding.csv":
+        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "Shares Outstanding", "Shares_Outstanding_ROC"], skiprows=1) # removed due to negative effect on model
     else:
         df = pd.read_csv(file_path, parse_dates=["Date"])
     
@@ -425,8 +429,8 @@ importances = pd.Series(smote_rf_pipeline.named_steps['rf'].feature_importances_
 
 # Set dynamic thresholds (1% of max importance and absolute minimum)
 max_importance = importances.max()
-relative_threshold = max_importance * 0.2
-absolute_threshold = 0.2  # Hard minimum regardless of max
+relative_threshold = max_importance * 0.4
+absolute_threshold = 0.4  # Hard minimum regardless of max
 low_importance = importances[
     (importances < relative_threshold) & 
     (importances < absolute_threshold)
