@@ -380,7 +380,7 @@ while removal_occurred:
     # Create a SMOTE + RF pipeline for feature importance calculation
     smote_xgb_pipeline = ImbPipeline([
         ('scaler', StandardScaler()),
-        ('smote', SMOTE(random_state=42)),
+        ('smote', SMOTE(sampling_strategy={0: 600, 2:565}, random_state=42)),
         ('xgb', XGBClassifier(
             objective='multi:softprob',  # Changed to softprob for better weight handling
             num_class=3,
@@ -486,10 +486,6 @@ X_test = test[features]
 
 # Modify the pipeline section
 print("TRAINING MODEL=====================================================================================================================================================")
-# 1. Compute class weights BEFORE SMOTE
-classes = np.unique(y_train_encoded)
-class_weights = compute_class_weight('balanced', classes=classes, y=y_train_encoded)
-
 # Check class distribution before SMOTE
 print("Class distribution before SMOTE:")
 print(pd.Series(y_train_encoded).value_counts())
@@ -497,7 +493,7 @@ print(pd.Series(y_train_encoded).value_counts())
 # Create SMOTE pipeline with XGBoost
 pipeline = ImbPipeline([
     ('scaler', StandardScaler()),
-    ('smote', SMOTE(random_state=42)),
+    ('smote', SMOTE(sampling_strategy={0: 600, 2:565},random_state=42)),
     ('xgb', XGBClassifier(
         objective='multi:softprob',  # Changed to softprob for better weight handling
         num_class=3,
@@ -521,10 +517,6 @@ param_grid = {
     'xgb__gamma': [0, 0.1]
 }
 
-#  Create custom scoring that incorporates weights
-def weighted_f1(y_true, y_pred):
-    return f1_score(y_true, y_pred, average='weighted')
-
 # Update GridSearchCV
 grid_search = GridSearchCV(
     pipeline,
@@ -533,10 +525,6 @@ grid_search = GridSearchCV(
     cv=5,
     n_jobs=-1
 )
-
-# [Keep the spinner code the same]
-
-
 
 # Create an event to control the spinner thread
 stop_event = threading.Event()
