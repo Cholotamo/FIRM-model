@@ -250,12 +250,11 @@ print(data.shape)
 
 
 # Target variable
-# ???subject to change???
-# 10-day forward return
-data['Future_9d_Return'] = data['PX_LAST'].shift(-9) / data['PX_LAST'] - 1
-data['Label'] = data['Future_9d_Return'].apply(
-    lambda x: 'Buy' if x > 0.03
-                else 'Sell' if x < -0.03
+# x-day forward return
+data['Future_xd_Return'] = data['PX_LAST'].shift(-20) / data['PX_LAST'] - 1
+data['Label'] = data['Future_xd_Return'].apply(
+    lambda x: 'Buy' if x > 0.02
+                else 'Sell' if x < -0.02
                 else 'Hold'
 )
 print("TARGET VARIABLE=====================================================================================================================================================")
@@ -380,7 +379,7 @@ while removal_occurred:
     # Create a SMOTE + RF pipeline for feature importance calculation
     smote_xgb_pipeline = ImbPipeline([
         ('scaler', StandardScaler()),
-        ('smote', SMOTE(sampling_strategy={0: 600, 2:565}, random_state=42)),
+        ('smote', SMOTE(sampling_strategy='auto', random_state=42)),
         ('xgb', XGBClassifier(
             objective='multi:softprob',  # Changed to softprob for better weight handling
             num_class=3,
@@ -493,7 +492,7 @@ print(pd.Series(y_train_encoded).value_counts())
 # Create SMOTE pipeline with XGBoost
 pipeline = ImbPipeline([
     ('scaler', StandardScaler()),
-    ('smote', SMOTE(sampling_strategy={0: 600, 2:565},random_state=42)),
+    ('smote', SMOTE(sampling_strategy='auto',random_state=42)),
     ('xgb', XGBClassifier(
         objective='multi:softprob',  # Changed to softprob for better weight handling
         num_class=3,
