@@ -246,41 +246,30 @@ print(data.shape)
 
 
 
+buysell_thresholds = [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1]
+periodicity = [9, 20, 200]
 
+# buysell_thresholds = [0.01, 0.02]
+# periodicity = [9, 20]
 
+results = []
 
-# Target variable
-# ???subject to change???
-# 10-day forward return
-data['Future_9d_Return'] = data['PX_LAST'].shift(-9) / data['PX_LAST'] - 1
-data['Label'] = data['Future_9d_Return'].apply(
-    lambda x: 'Buy' if x > 0.03
-                else 'Sell' if x < -0.03
-                else 'Hold'
-)
-print("TARGET VARIABLE=====================================================================================================================================================")
-print(data['Label'].value_counts())
-# print to csv
-data.to_csv("output/feature_engineered_data.csv", index=False)
+for period in periodicity:
+    # Target variable
+    # ???subject to change???
+    # x-day forward return
+    data['Future_xd_Return'] = data['PX_LAST'].shift(-period) / data['PX_LAST'] - 1
 
-
-
-
-
-
-
-
-
-# Final data preparation
-data.ffill(inplace=True)  # Forward-fill missing values
-data.dropna(inplace=True)  # Drop remaining NaN rows
-
-# Train test split to be time-series aware
-train = data[data['Date'] < '2024-01-01']
-test = data[data['Date'] >= '2024-01-01']
-
-print("FINAL DATA PREPARATION=============================================================================================================================================")
-print(train.head())
+    for threshold in buysell_thresholds:
+        data['Label'] = data['Future_xd_Return'].apply(
+            lambda x: 'Buy' if x > threshold
+                        else 'Sell' if x < -threshold
+                        else 'Hold'
+        )
+        print("TARGET VARIABLE=====================================================================================================================================================")
+        print(data['Label'].value_counts())
+        # print to csv
+        data.to_csv("output/feature_engineered_data.csv", index=False)
 
 
 
@@ -290,131 +279,16 @@ print(train.head())
 
 
 
-print("INITIALIZING FEATURES=====================================================================================================================================================")
-# Feature selection
-features = [
-    'CONCCONF_Price', 'CONCCONF_ROC', 'ANR', 'Target Price',
-    'ANR Classification', 'ANR Change', 'Revenue', 'Revenue_ROC', 'PX_LAST',
-    'HP_ROC', 'PX_LAST_ta', 'PX_BID_ta', 'Price_ta', 'RSI_ta',
-    'RSI_Signal_ta', 'MACD_Line_ta', 'MACD_Signal_ta', 'MACD_Hist_ta',
-    'MACD_Signal_Indicator_ta', 'Bollinger_SMA_ta', 'Bollinger_Upper_ta',
-    'Bollinger_Lower_ta', 'Bollinger_Signal_ta', 'SMA_9_ta', 'SMA_20_ta',
-    'EMA_9_ta', 'EMA_20_ta', 'SMA_Cross_Signal_ta', 'EMA_Cross_Signal_ta',
-    'Overall_Signal_ta', 'Stock Price', 'Q_1', 'Q_2', 'Q_3', 'Q_4',
-    'CQ2_Stock_Price', 'CQ4_Stock_Price', 'CQ2_CQ4_Seasonality_Ratio',
-    'CQ2_CQ4_Label_Daily', 'Prev_Q4_Stock_Price',
-    'CQ2_PQ4_Seasonality_Ratio', 'CQ2_PQ4_Label_Daily', 'M2_Price',
-    'M2_ROC', 'PBJ_Price', 'PBJ_ROC', 'PCUSEQTR_Price', 'PCUSEQTR_ROC',
-    'VIX_Price', 'VIX_ROC', 'XLP_Price', 'XLP_ROC', 'ANR_lag1',
-    'PX_LAST_lag1', 'Revenue_lag9', 'PX_LAST_MA9', 'ANR_MA20',
-    'Target_Price_Gap', 'Undervalued', 'Stock_vs_PBJ', 'Stock_vs_XLP',
-    'PX_ROC_9d', 'Revenue_ROC_20d', 'ANR_Change_Abs', 'PX_LAST_MA21',
-    'PX_LAST_MA63', 'Price_Volatility_21d', 'Fractal_Efficiency_21d',
-    'ANR_3d_change', 'ANR_21d_zscore', 'ANR_Target_Ratio', 'Q2_Premium',
-    'Q4_Discount', 'CQ2CQ4_Ratio_MA21', 'CQ2PQ4_Ratio_ROC_14d', 'PBJ_RS_3d',
-    'XLP_RS_Volatility', 'Max_Drawdown_21d', 'Recovery_Factor_63d',
-    'Q_1_Price_Ratio', 'Q_2_Price_Ratio', 'Q_3_Price_Ratio',
-    'Q_4_Price_Ratio', 'Accts_Payable', 'Accts_Payable_ROC', 'Shares Outstanding', 'Shares_Outstanding_ROC'
-]
-# Excluded columns
-# (a) ANR Classification
-# This is your target variable (the label you’re trying to predict). Including it as a feature would cause data leakage since the model would "cheat" by seeing the answer during training. Remove it!
-# (b) Target Price
-# This is a forward-looking metric (analyst consensus for future price). If this is not available in real time when making predictions (e.g., analysts update it periodically), including it would leak future information.
-# (c) Undervalued
-# This is derived from PX_LAST and Target Price. If Target Price is excluded, Undervalued should also be excluded to avoid indirect leakage.
+        # Final data preparation
+        data.ffill(inplace=True)  # Forward-fill missing values
+        data.dropna(inplace=True)  # Drop remaining NaN rows
 
-# Define X and y
-X_train = train[features]
-X_test = test[features]
-y_train = train['Label']
-y_test = test['Label']
+        # Train test split to be time-series aware
+        train = data[data['Date'] < '2024-01-01']
+        test = data[data['Date'] >= '2024-01-01']
 
-# Train a model
-
-# Encode the labels
-le = LabelEncoder()
-y_train_encoded = le.fit_transform(y_train)
-y_test_encoded = le.transform(y_test)
-
-# Print the mapping of labels to encoded values
-print("Label encoding mapping:")
-for label, encoded in zip(le.classes_, range(len(le.classes_))):
-    print(f"{label}: {encoded}")
-
-
-
-
-
-
-
-
-# Multicollinearity removal process
-print("\nREMOVING MULTICOLLINEAR FEATURES===================================================================================================================================")
-features_modified = features.copy()
-removal_occurred = True
-
-while removal_occurred:
-    # Calculate correlation matrix
-    corr_matrix = X_train[features_modified].corr().abs()
-    upper_triangle = corr_matrix.where(np.triu(np.ones(corr_matrix.shape, dtype=bool), k=1))
-    
-    # Find high correlation pairs
-    high_corr = [(col1, col2) for col1 in upper_triangle.columns 
-                for col2 in upper_triangle.index 
-                if upper_triangle.loc[col2, col1] > 0.7]
-    
-    if not high_corr:
-        print("No highly correlated pairs remaining (r > 0.7).")
-        removal_occurred = False
-        break
-    
-    # Find highest correlation pair
-    max_corr = 0
-    max_pair = None
-    for pair in high_corr:
-        if upper_triangle.loc[pair[1], pair[0]] > max_corr:
-            max_corr = upper_triangle.loc[pair[1], pair[0]]
-            max_pair = (pair[0], pair[1])
-    
-    # Create a SMOTE + RF pipeline for feature importance calculation
-    smote_xgb_pipeline = ImbPipeline([
-        ('scaler', StandardScaler()),
-        ('smote', SMOTE(sampling_strategy={0: 600, 2:565}, random_state=42)),
-        ('xgb', XGBClassifier(
-            objective='multi:softprob',  # Changed to softprob for better weight handling
-            num_class=3,
-            random_state=42,
-            eval_metric='mlogloss',
-            tree_method='hist',
-            # Add class weighting through objective parameters
-            min_child_weight=0.01,  # Helps with class imbalance
-            max_delta_step=1        # Recommended for imbalanced classes
-        ))
-])
-
-    # During correlation removal iteration:
-    smote_xgb_pipeline.fit(X_train[features_modified], y_train_encoded)
-    importances = pd.Series(smote_xgb_pipeline.named_steps['xgb'].feature_importances_, index=features_modified)
-    
-    # Determine which feature to remove
-    if importances[max_pair[0]] >= importances[max_pair[1]]:
-        remove_feature = max_pair[1]
-    else:
-        remove_feature = max_pair[0]
-    
-    print(f"Removing '{remove_feature}' (importance: {importances[remove_feature]:.4f}) - Correlated with '{max_pair[0] if remove_feature == max_pair[1] else max_pair[1]}' (r = {max_corr:.2f})")
-    
-    # Update feature list
-    features_modified.remove(remove_feature)
-    
-    # Update data splits
-    X_train = train[features_modified]
-    X_test = test[features_modified]
-
-# Final feature set
-features = features_modified
-print("\nFINAL FEATURE SET:", features)
+        print("FINAL DATA PREPARATION=============================================================================================================================================")
+        print(train.head())
 
 
 
@@ -424,147 +298,341 @@ print("\nFINAL FEATURE SET:", features)
 
 
 
+        print("INITIALIZING FEATURES=====================================================================================================================================================")
+        # Feature selection
+        features = [
+            'CONCCONF_Price', 'CONCCONF_ROC', 'ANR', 'Target Price',
+            'ANR Classification', 'ANR Change', 'Revenue', 'Revenue_ROC', 'PX_LAST',
+            'HP_ROC', 'PX_LAST_ta', 'PX_BID_ta', 'Price_ta', 'RSI_ta',
+            'RSI_Signal_ta', 'MACD_Line_ta', 'MACD_Signal_ta', 'MACD_Hist_ta',
+            'MACD_Signal_Indicator_ta', 'Bollinger_SMA_ta', 'Bollinger_Upper_ta',
+            'Bollinger_Lower_ta', 'Bollinger_Signal_ta', 'SMA_9_ta', 'SMA_20_ta',
+            'EMA_9_ta', 'EMA_20_ta', 'SMA_Cross_Signal_ta', 'EMA_Cross_Signal_ta',
+            'Overall_Signal_ta', 'Stock Price', 'Q_1', 'Q_2', 'Q_3', 'Q_4',
+            'CQ2_Stock_Price', 'CQ4_Stock_Price', 'CQ2_CQ4_Seasonality_Ratio',
+            'CQ2_CQ4_Label_Daily', 'Prev_Q4_Stock_Price',
+            'CQ2_PQ4_Seasonality_Ratio', 'CQ2_PQ4_Label_Daily', 'M2_Price',
+            'M2_ROC', 'PBJ_Price', 'PBJ_ROC', 'PCUSEQTR_Price', 'PCUSEQTR_ROC',
+            'VIX_Price', 'VIX_ROC', 'XLP_Price', 'XLP_ROC', 'ANR_lag1',
+            'PX_LAST_lag1', 'Revenue_lag9', 'PX_LAST_MA9', 'ANR_MA20',
+            'Target_Price_Gap', 'Undervalued', 'Stock_vs_PBJ', 'Stock_vs_XLP',
+            'PX_ROC_9d', 'Revenue_ROC_20d', 'ANR_Change_Abs', 'PX_LAST_MA21',
+            'PX_LAST_MA63', 'Price_Volatility_21d', 'Fractal_Efficiency_21d',
+            'ANR_3d_change', 'ANR_21d_zscore', 'ANR_Target_Ratio', 'Q2_Premium',
+            'Q4_Discount', 'CQ2CQ4_Ratio_MA21', 'CQ2PQ4_Ratio_ROC_14d', 'PBJ_RS_3d',
+            'XLP_RS_Volatility', 'Max_Drawdown_21d', 'Recovery_Factor_63d',
+            'Q_1_Price_Ratio', 'Q_2_Price_Ratio', 'Q_3_Price_Ratio',
+            'Q_4_Price_Ratio', 'Accts_Payable', 'Accts_Payable_ROC', 'Shares Outstanding', 'Shares_Outstanding_ROC'
+        ]
+        # Excluded columns
+        # (a) ANR Classification
+        # This is your target variable (the label you’re trying to predict). Including it as a feature would cause data leakage since the model would "cheat" by seeing the answer during training. Remove it!
+        # (b) Target Price
+        # This is a forward-looking metric (analyst consensus for future price). If this is not available in real time when making predictions (e.g., analysts update it periodically), including it would leak future information.
+        # (c) Undervalued
+        # This is derived from PX_LAST and Target Price. If Target Price is excluded, Undervalued should also be excluded to avoid indirect leakage.
 
-# ... [Previous code up through multicollinearity removal] ...
+        # Define X and y
+        X_train = train[features]
+        X_test = test[features]
+        y_train = train['Label']
+        y_test = test['Label']
 
-print("\nFINAL FEATURE SET AFTER MULTICOLLINEARITY REMOVAL:", features_modified)
+        # Train a model
 
-# New: Remove low-importance features
-print("\nREMOVING LOW-IMPORTANCE FEATURES===================================================================================================================================")
+        # Encode the labels
+        le = LabelEncoder()
+        y_train_encoded = le.fit_transform(y_train)
+        y_test_encoded = le.transform(y_test)
 
-# Calculate feature importances with current set
-smote_xgb_pipeline.fit(X_train[features_modified], y_train_encoded)
-importances = pd.Series(smote_xgb_pipeline.named_steps['xgb'].feature_importances_, index=features_modified)
+        # Print the mapping of labels to encoded values
+        print("Label encoding mapping:")
+        for label, encoded in zip(le.classes_, range(len(le.classes_))):
+            print(f"{label}: {encoded}")
 
-# Set dynamic thresholds (1% of max importance and absolute minimum)
-max_importance = importances.max()
-relative_threshold = max_importance * 0.1
-absolute_threshold = 0.1  # Hard minimum regardless of max
-low_importance = importances[
-    (importances < relative_threshold) & 
-    (importances < absolute_threshold)
-].index.tolist()
 
-# Remove low-importance features iteratively
-while low_importance:
-    # Remove the lowest importance feature first
-    to_remove = importances.idxmin()
-    print(f"Removing '{to_remove}' (importance: {importances[to_remove]:.4f})")
-    features_modified.remove(to_remove)
-    
-    # Recalculate importances
-    if len(features_modified) > 0:  # Prevent empty feature set
-        smote_xgb_pipeline.fit(X_train[features_modified], y_train_encoded)
-        importances = pd.Series(smote_xgb_pipeline.named_steps['xgb'].feature_importances_, index=features_modified)
-        
-        # Update low-importance list
+
+
+
+
+
+
+        # Multicollinearity removal process
+        print("\nREMOVING MULTICOLLINEAR FEATURES===================================================================================================================================")
+        features_modified = features.copy()
+        removal_occurred = True
+
+        while removal_occurred:
+            # Calculate correlation matrix
+            corr_matrix = X_train[features_modified].corr().abs()
+            upper_triangle = corr_matrix.where(np.triu(np.ones(corr_matrix.shape, dtype=bool), k=1))
+            
+            # Find high correlation pairs
+            high_corr = [(col1, col2) for col1 in upper_triangle.columns 
+                        for col2 in upper_triangle.index 
+                        if upper_triangle.loc[col2, col1] > 0.7]
+            
+            if not high_corr:
+                print("No highly correlated pairs remaining (r > 0.7).")
+                removal_occurred = False
+                break
+            
+            # Find highest correlation pair
+            max_corr = 0
+            max_pair = None
+            for pair in high_corr:
+                if upper_triangle.loc[pair[1], pair[0]] > max_corr:
+                    max_corr = upper_triangle.loc[pair[1], pair[0]]
+                    max_pair = (pair[0], pair[1])
+            
+            # Create a SMOTE + RF pipeline for feature importance calculation
+            feature_select_xgb_pipeline = ImbPipeline([
+                ('scaler', StandardScaler()),
+                ('xgb', XGBClassifier(
+                    objective='multi:softprob',  # Changed to softprob for better weight handling
+                    num_class=3,
+                    random_state=42,
+                    eval_metric='mlogloss',
+                    tree_method='hist',
+                    # Add class weighting through objective parameters
+                    min_child_weight=0.01,  # Helps with class imbalance
+                    max_delta_step=1        # Recommended for imbalanced classes
+                ))
+        ])
+
+            # During correlation removal iteration:
+            feature_select_xgb_pipeline.fit(X_train[features_modified], y_train_encoded)
+            importances = pd.Series(feature_select_xgb_pipeline.named_steps['xgb'].feature_importances_, index=features_modified)
+            
+            # Determine which feature to remove
+            if importances[max_pair[0]] >= importances[max_pair[1]]:
+                remove_feature = max_pair[1]
+            else:
+                remove_feature = max_pair[0]
+            
+            print(f"Removing '{remove_feature}' (importance: {importances[remove_feature]:.4f}) - Correlated with '{max_pair[0] if remove_feature == max_pair[1] else max_pair[1]}' (r = {max_corr:.2f})")
+            
+            # Update feature list
+            features_modified.remove(remove_feature)
+            
+            # Update data splits
+            X_train = train[features_modified]
+            X_test = test[features_modified]
+
+        # Final feature set
+        features = features_modified
+        print("\nFINAL FEATURE SET:", features)
+
+
+
+
+
+
+
+
+
+
+        # ... [Previous code up through multicollinearity removal] ...
+
+        print("\nFINAL FEATURE SET AFTER MULTICOLLINEARITY REMOVAL:", features_modified)
+
+        # New: Remove low-importance features
+        print("\nREMOVING LOW-IMPORTANCE FEATURES===================================================================================================================================")
+
+        # Calculate feature importances with current set
+        feature_select_xgb_pipeline.fit(X_train[features_modified], y_train_encoded)
+        importances = pd.Series(feature_select_xgb_pipeline.named_steps['xgb'].feature_importances_, index=features_modified)
+
+        # Set dynamic thresholds (1% of max importance and absolute minimum)
+        max_importance = importances.max()
+        relative_threshold = max_importance * 0.1
+        absolute_threshold = 0.1  # Hard minimum regardless of max
         low_importance = importances[
             (importances < relative_threshold) & 
             (importances < absolute_threshold)
         ].index.tolist()
-    else:
-        break
 
-# Final feature set update
-features = features_modified
-print("\nFINAL FEATURE SET AFTER IMPORTANCE FILTERING:", features)
-if not features:
-    raise ValueError("All features removed! Check threshold values.")
+        # Remove low-importance features iteratively
+        while low_importance:
+            # Remove the lowest importance feature first
+            to_remove = importances.idxmin()
+            print(f"Removing '{to_remove}' (importance: {importances[to_remove]:.4f})")
+            features_modified.remove(to_remove)
+            
+            # Recalculate importances
+            if len(features_modified) > 0:  # Prevent empty feature set
+                feature_select_xgb_pipeline.fit(X_train[features_modified], y_train_encoded)
+                importances = pd.Series(feature_select_xgb_pipeline.named_steps['xgb'].feature_importances_, index=features_modified)
+                
+                # Update low-importance list
+                low_importance = importances[
+                    (importances < relative_threshold) & 
+                    (importances < absolute_threshold)
+                ].index.tolist()
+            else:
+                break
 
-# Update data splits
-X_train = train[features]
-X_test = test[features]
+        # Final feature set update
+        features = features_modified
+        print("\nFINAL FEATURE SET AFTER IMPORTANCE FILTERING:", features)
+        if not features:
+            raise ValueError("All features removed! Check threshold values.")
 
-
-
-
-
-
-
-
-
-
-# Modify the pipeline section
-print("TRAINING MODEL=====================================================================================================================================================")
-# Check class distribution before SMOTE
-print("Class distribution before SMOTE:")
-print(pd.Series(y_train_encoded).value_counts())
-
-# Create SMOTE pipeline with XGBoost
-pipeline = ImbPipeline([
-    ('scaler', StandardScaler()),
-    ('smote', SMOTE(sampling_strategy={0: 600, 2:565},random_state=42)),
-    ('xgb', XGBClassifier(
-        objective='multi:softprob',  # Changed to softprob for better weight handling
-        num_class=3,
-        random_state=42,
-        eval_metric='mlogloss',
-        tree_method='hist',
-        # Add class weighting through objective parameters
-        min_child_weight=0.01,  # Helps with class imbalance
-        max_delta_step=1        # Recommended for imbalanced classes
-    ))
-])
+        # Update data splits
+        X_train = train[features]
+        X_test = test[features]
 
 
-# Update parameter grid for XGBoost
-param_grid = {
-    'xgb__n_estimators': [100, 200],
-    'xgb__max_depth': [3, 5, 7],
-    'xgb__learning_rate': [0.05, 0.1],
-    'xgb__subsample': [0.8, 0.9],
-    'xgb__colsample_bytree': [0.8, 0.9],
-    'xgb__gamma': [0, 0.1]
-}
 
-# Update GridSearchCV
-grid_search = GridSearchCV(
-    pipeline,
-    param_grid,
-    scoring='balanced_accuracy',  # Focuses on balanced class performance
-    cv=5,
-    n_jobs=-1
+
+
+
+
+
+
+
+        # Modify the pipeline section
+        print("TRAINING MODEL=====================================================================================================================================================")
+        # Check class distribution before SMOTE
+        print("Class distribution before SMOTE:")
+        print(pd.Series(y_train_encoded).value_counts())
+
+        # Create SMOTE pipeline with XGBoost
+        pipeline = ImbPipeline([
+            ('scaler', StandardScaler()),
+            ('xgb', XGBClassifier(
+                objective='multi:softprob',  # Changed to softprob for better weight handling
+                num_class=3,
+                random_state=42,
+                eval_metric='mlogloss',
+                tree_method='hist',
+                # Add class weighting through objective parameters
+                min_child_weight=0.01,  # Helps with class imbalance
+                max_delta_step=1        # Recommended for imbalanced classes
+            ))
+        ])
+
+
+        # Update parameter grid for XGBoost
+        param_grid = {
+            'xgb__n_estimators': [100, 200],
+            'xgb__max_depth': [3, 5, 7],
+            'xgb__learning_rate': [0.05, 0.1],
+            'xgb__subsample': [0.8, 0.9],
+            'xgb__colsample_bytree': [0.8, 0.9],
+            'xgb__gamma': [0, 0.1]
+        }
+
+        # Update GridSearchCV
+        grid_search = GridSearchCV(
+            pipeline,
+            param_grid,
+            scoring='balanced_accuracy',  # Focuses on balanced class performance
+            cv=5,
+            n_jobs=-1
+        )
+
+        # Create an event to control the spinner thread
+        stop_event = threading.Event()
+
+        # Start the spinner in a separate thread
+        spinner_thread = threading.Thread(target=spinner, args=(stop_event,))
+        spinner_thread.daemon = True  # Daemonize thread to stop it when the main program exits
+        spinner_thread.start()
+
+        # Train the model with SMOTE
+        grid_search.fit(X_train, y_train_encoded)
+        best_xgb = grid_search.best_estimator_
+
+        # Stop the spinner by setting the stop event
+        stop_event.set()
+        spinner_thread.join()  # Wait for the spinner thread to finish
+
+        # Clear the spinner line and print completion message
+        sys.stdout.write('\rTraining complete! \n')
+        sys.stdout.flush()
+
+        # Check class distribution after SMOTE (in training data)
+        # smote = pipeline.named_steps['smote']
+        # X_res, y_res = smote.fit_resample(X_train, y_train_encoded)
+        # print("\nClass distribution after SMOTE:")
+        # print(pd.Series(y_res).value_counts())
+
+        # Predict on test data
+        y_pred = best_xgb.predict(X_test)
+
+        # Decode labels back to original strings
+        y_pred_labels = le.inverse_transform(y_pred)
+
+        # Print metrics
+        print("period:", period)
+        print("threshold:", threshold)
+        print("Accuracy:", accuracy_score(y_test, y_pred_labels))
+        print("\nClassification Report:\n", classification_report(y_test, y_pred_labels))
+
+        # Save model
+        joblib.dump(best_xgb, "model/xgb_model.pkl")
+
+        # Calculate F1 scores
+        f1_scores = f1_score(y_test, y_pred_labels, average=None)
+        buy_f1 = f1_scores[le.transform(['Buy'])[0]] if 'Buy' in le.classes_ else 0
+        sell_f1 = f1_scores[le.transform(['Sell'])[0]] if 'Sell' in le.classes_ else 0
+        hold_f1 = f1_scores[le.transform(['Hold'])[0]] if 'Hold' in le.classes_ else 0
+        
+        # Store results
+        results.append({
+            'Period': period,
+            'Threshold': threshold,
+            'Buy_F1': buy_f1,
+            'Sell_F1': sell_f1,
+            'Hold_F1': hold_f1
+        })
+
+
+
+
+
+
+
+
+
+
+#plot for periodicity and buysell_thresholds
+# Convert results to DataFrame
+results_df = pd.DataFrame(results)
+
+# Melt DataFrame for plotting
+plot_df = pd.melt(
+    results_df,
+    id_vars=['Period', 'Threshold'],
+    value_vars=['Buy_F1', 'Sell_F1', 'Hold_F1'],
+    var_name='Signal',
+    value_name='F1_Score'
 )
 
-# Create an event to control the spinner thread
-stop_event = threading.Event()
+# Plotting
+plt.figure(figsize=(14, 8))
+sns.lineplot(
+    data=plot_df,
+    x='Threshold',
+    y='F1_Score',
+    hue='Signal',
+    style='Period',
+    markers=True,
+    dashes=False,
+    palette={'Buy_F1': 'green', 'Sell_F1': 'red', 'Hold_F1': 'blue'},
+    markersize=8
+)
+plt.title('Buy/Sell F1 Scores by Threshold and Period', fontsize=16)
+plt.xlabel('Threshold', fontsize=12)
+plt.ylabel('F1 Score', fontsize=12)
+plt.xticks(buysell_thresholds, rotation=45)
+plt.grid(True, linestyle='--', alpha=0.6)
+plt.legend(title='Signal/Period')
+plt.tight_layout()
+plt.show()
 
-# Start the spinner in a separate thread
-spinner_thread = threading.Thread(target=spinner, args=(stop_event,))
-spinner_thread.daemon = True  # Daemonize thread to stop it when the main program exits
-spinner_thread.start()
-
-# Train the model with SMOTE
-grid_search.fit(X_train, y_train_encoded)
-best_xgb = grid_search.best_estimator_
-
-# Stop the spinner by setting the stop event
-stop_event.set()
-spinner_thread.join()  # Wait for the spinner thread to finish
-
-# Clear the spinner line and print completion message
-sys.stdout.write('\rTraining complete! \n')
-sys.stdout.flush()
-
-# Check class distribution after SMOTE (in training data)
-smote = pipeline.named_steps['smote']
-X_res, y_res = smote.fit_resample(X_train, y_train_encoded)
-print("\nClass distribution after SMOTE:")
-print(pd.Series(y_res).value_counts())
-
-# Predict on test data
-y_pred = best_xgb.predict(X_test)
-
-# Decode labels back to original strings
-y_pred_labels = le.inverse_transform(y_pred)
-
-# Print metrics
-print("Accuracy:", accuracy_score(y_test, y_pred_labels))
-print("\nClassification Report:\n", classification_report(y_test, y_pred_labels))
-
-# Save model
-joblib.dump(best_xgb, "model/xgb_model.pkl")
-
+results_df.to_csv("output/f1_scores_by_threshold_period.csv", index=False)
 
 
 
