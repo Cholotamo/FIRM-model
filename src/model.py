@@ -250,12 +250,11 @@ print(data.shape)
 
 
 # Target variable
-# ???subject to change???
-# 10-day forward return
-data['Future_9d_Return'] = data['PX_LAST'].shift(-9) / data['PX_LAST'] - 1
-data['Label'] = data['Future_9d_Return'].apply(
-    lambda x: 'Buy' if x > 0.03
-                else 'Sell' if x < -0.03
+# x-day forward return
+data['Future_xd_Return'] = data['PX_LAST'].shift(-20) / data['PX_LAST'] - 1
+data['Label'] = data['Future_xd_Return'].apply(
+    lambda x: 'Buy' if x > 0.02
+                else 'Sell' if x < -0.02
                 else 'Hold'
 )
 print("TARGET VARIABLE=====================================================================================================================================================")
@@ -378,9 +377,8 @@ while removal_occurred:
             max_pair = (pair[0], pair[1])
     
     # Create a SMOTE + RF pipeline for feature importance calculation
-    smote_xgb_pipeline = ImbPipeline([
+    feature_select_xgb_pipeline = ImbPipeline([
         ('scaler', StandardScaler()),
-        ('smote', SMOTE(sampling_strategy={0: 600, 2:565}, random_state=42)),
         ('xgb', XGBClassifier(
             objective='multi:softprob',  # Changed to softprob for better weight handling
             num_class=3,
@@ -394,8 +392,8 @@ while removal_occurred:
 ])
 
     # During correlation removal iteration:
-    smote_xgb_pipeline.fit(X_train[features_modified], y_train_encoded)
-    importances = pd.Series(smote_xgb_pipeline.named_steps['xgb'].feature_importances_, index=features_modified)
+    feature_select_xgb_pipeline.fit(X_train[features_modified], y_train_encoded)
+    importances = pd.Series(feature_select_xgb_pipeline.named_steps['xgb'].feature_importances_, index=features_modified)
     
     # Determine which feature to remove
     if importances[max_pair[0]] >= importances[max_pair[1]]:
@@ -433,13 +431,13 @@ print("\nFINAL FEATURE SET AFTER MULTICOLLINEARITY REMOVAL:", features_modified)
 print("\nREMOVING LOW-IMPORTANCE FEATURES===================================================================================================================================")
 
 # Calculate feature importances with current set
-smote_xgb_pipeline.fit(X_train[features_modified], y_train_encoded)
-importances = pd.Series(smote_xgb_pipeline.named_steps['xgb'].feature_importances_, index=features_modified)
+feature_select_xgb_pipeline.fit(X_train[features_modified], y_train_encoded)
+importances = pd.Series(feature_select_xgb_pipeline.named_steps['xgb'].feature_importances_, index=features_modified)
 
 # Set dynamic thresholds (1% of max importance and absolute minimum)
 max_importance = importances.max()
-relative_threshold = max_importance * 0.1
-absolute_threshold = 0.1  # Hard minimum regardless of max
+relative_threshold = max_importance * 0.2
+absolute_threshold = 0.2  # Hard minimum regardless of max
 low_importance = importances[
     (importances < relative_threshold) & 
     (importances < absolute_threshold)
@@ -454,8 +452,8 @@ while low_importance:
     
     # Recalculate importances
     if len(features_modified) > 0:  # Prevent empty feature set
-        smote_xgb_pipeline.fit(X_train[features_modified], y_train_encoded)
-        importances = pd.Series(smote_xgb_pipeline.named_steps['xgb'].feature_importances_, index=features_modified)
+        feature_select_xgb_pipeline.fit(X_train[features_modified], y_train_encoded)
+        importances = pd.Series(feature_select_xgb_pipeline.named_steps['xgb'].feature_importances_, index=features_modified)
         
         # Update low-importance list
         low_importance = importances[
@@ -486,14 +484,8 @@ X_test = test[features]
 
 # Modify the pipeline section
 print("TRAINING MODEL=====================================================================================================================================================")
-# Check class distribution before SMOTE
-print("Class distribution before SMOTE:")
-print(pd.Series(y_train_encoded).value_counts())
-
-# Create SMOTE pipeline with XGBoost
 pipeline = ImbPipeline([
     ('scaler', StandardScaler()),
-    ('smote', SMOTE(sampling_strategy={0: 600, 2:565},random_state=42)),
     ('xgb', XGBClassifier(
         objective='multi:softprob',  # Changed to softprob for better weight handling
         num_class=3,
@@ -545,12 +537,6 @@ spinner_thread.join()  # Wait for the spinner thread to finish
 # Clear the spinner line and print completion message
 sys.stdout.write('\rTraining complete! \n')
 sys.stdout.flush()
-
-# Check class distribution after SMOTE (in training data)
-smote = pipeline.named_steps['smote']
-X_res, y_res = smote.fit_resample(X_train, y_train_encoded)
-print("\nClass distribution after SMOTE:")
-print(pd.Series(y_res).value_counts())
 
 # Predict on test data
 y_pred = best_xgb.predict(X_test)
