@@ -573,8 +573,15 @@ for period in periodicity:
         # Save model
         joblib.dump(best_xgb, "model/xgb_model.pkl")
 
-        # Calculate F1 scores
-        f1_scores = f1_score(y_test, y_pred_labels, average=None)
+        # Calculate F1 scores with explicit labels
+        f1_scores = f1_score(
+            y_test, 
+            y_pred_labels, 
+            average=None, 
+            labels=le.classes_  # Use the classes seen during training
+        )
+
+        # Map scores to labels safely
         buy_f1 = f1_scores[le.transform(['Buy'])[0]] if 'Buy' in le.classes_ else 0
         sell_f1 = f1_scores[le.transform(['Sell'])[0]] if 'Sell' in le.classes_ else 0
         hold_f1 = f1_scores[le.transform(['Hold'])[0]] if 'Hold' in le.classes_ else 0
