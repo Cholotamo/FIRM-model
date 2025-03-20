@@ -313,7 +313,14 @@ features = [
     'Q4_Discount', 'CQ2CQ4_Ratio_MA21', 'CQ2PQ4_Ratio_ROC_14d', 'PBJ_RS_3d',
     'XLP_RS_Volatility', 'Max_Drawdown_21d', 'Recovery_Factor_63d',
     'Q_1_Price_Ratio', 'Q_2_Price_Ratio', 'Q_3_Price_Ratio',
-    'Q_4_Price_Ratio', 'Accts_Payable', 'Accts_Payable_ROC', 'Shares Outstanding', 'Shares_Outstanding_ROC'
+    'Q_4_Price_Ratio', 'Accts_Payable', 'Accts_Payable_ROC', 'Shares Outstanding', 'Shares_Outstanding_ROC',
+    'Return on Common Equity', 'Return on Assets', 'Return on Invested Capital', 'EBITDA Margin', 'Operating Margin', 
+    'Net Income Margin', 'EPS Diluted', 'Dividend per Share', 'Current Ratio', 'Quick Ratio', 
+    'Return on Common Equity_roc', 'Return on Assets_roc', 'Return on Invested Capital_roc', 'EBITDA Margin_roc', 
+    'Operating Margin_roc', 'Net Income Margin_roc', 'EPS Diluted_roc', 'Dividend per Share_roc', 
+    'Current Ratio_roc', 'Quick Ratio_roc', 
+    'Short Interest', 'Close', 'Average Daily Volume', 'Short Interest Ratio', 
+    'Short Interest_roc', 'Average Daily Volume_roc', 'Short Interest Ratio_roc'
 ]
 # Excluded columns
 # (a) ANR Classification
@@ -379,7 +386,6 @@ while removal_occurred:
     # Create a SMOTE + RF pipeline for feature importance calculation
     smote_xgb_pipeline = ImbPipeline([
         ('scaler', StandardScaler()),
-        ('smote', SMOTE(sampling_strategy='auto', random_state=42)),
         ('xgb', XGBClassifier(
             objective='multi:softprob',  # Changed to softprob for better weight handling
             num_class=3,
@@ -485,14 +491,10 @@ X_test = test[features]
 
 # Modify the pipeline section
 print("TRAINING MODEL=====================================================================================================================================================")
-# Check class distribution before SMOTE
-print("Class distribution before SMOTE:")
-print(pd.Series(y_train_encoded).value_counts())
 
 # Create SMOTE pipeline with XGBoost
 pipeline = ImbPipeline([
     ('scaler', StandardScaler()),
-    ('smote', SMOTE(sampling_strategy='auto',random_state=42)),
     ('xgb', XGBClassifier(
         objective='multi:softprob',  # Changed to softprob for better weight handling
         num_class=3,
@@ -544,12 +546,6 @@ spinner_thread.join()  # Wait for the spinner thread to finish
 # Clear the spinner line and print completion message
 sys.stdout.write('\rTraining complete! \n')
 sys.stdout.flush()
-
-# Check class distribution after SMOTE (in training data)
-smote = pipeline.named_steps['smote']
-X_res, y_res = smote.fit_resample(X_train, y_train_encoded)
-print("\nClass distribution after SMOTE:")
-print(pd.Series(y_res).value_counts())
 
 # Predict on test data
 y_pred = best_xgb.predict(X_test)
