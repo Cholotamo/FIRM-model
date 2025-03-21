@@ -299,21 +299,13 @@ features = [
     'MACD_Signal_Indicator_ta', 'Bollinger_SMA_ta', 'Bollinger_Upper_ta',
     'Bollinger_Lower_ta', 'Bollinger_Signal_ta', 'SMA_9_ta', 'SMA_20_ta',
     'EMA_9_ta', 'EMA_20_ta', 'SMA_Cross_Signal_ta', 'EMA_Cross_Signal_ta',
-    'Overall_Signal_ta', 'Stock Price', 'Q_1', 'Q_2', 'Q_3', 'Q_4',
+    'Overall_Signal_ta', 'Stock Price', 'Q_2', 'Q_4',
     'CQ2_Stock_Price', 'CQ4_Stock_Price', 'CQ2_CQ4_Seasonality_Ratio',
     'CQ2_CQ4_Label_Daily', 'Prev_Q4_Stock_Price',
     'CQ2_PQ4_Seasonality_Ratio', 'CQ2_PQ4_Label_Daily', 'M2_Price',
     'M2_ROC', 'PBJ_Price', 'PBJ_ROC', 'PCUSEQTR_Price', 'PCUSEQTR_ROC',
-    'VIX_Price', 'VIX_ROC', 'XLP_Price', 'XLP_ROC', 'ANR_lag1',
-    'PX_LAST_lag1', 'Revenue_lag9', 'PX_LAST_MA9', 'ANR_MA20',
-    'Target_Price_Gap', 'Undervalued', 'Stock_vs_PBJ', 'Stock_vs_XLP',
-    'PX_ROC_9d', 'Revenue_ROC_20d', 'ANR_Change_Abs', 'PX_LAST_MA21',
-    'PX_LAST_MA63', 'Price_Volatility_21d', 'Fractal_Efficiency_21d',
-    'ANR_3d_change', 'ANR_21d_zscore', 'ANR_Target_Ratio', 'Q2_Premium',
-    'Q4_Discount', 'CQ2CQ4_Ratio_MA21', 'CQ2PQ4_Ratio_ROC_14d', 'PBJ_RS_3d',
-    'XLP_RS_Volatility', 'Max_Drawdown_21d', 'Recovery_Factor_63d',
-    'Q_1_Price_Ratio', 'Q_2_Price_Ratio', 'Q_3_Price_Ratio',
-    'Q_4_Price_Ratio', 'Accts_Payable', 'Accts_Payable_ROC', 'Shares Outstanding', 'Shares_Outstanding_ROC',
+    'VIX_Price', 'VIX_ROC', 'XLP_Price', 'XLP_ROC',
+    'Accts_Payable', 'Accts_Payable_ROC', 'Shares Outstanding', 'Shares_Outstanding_ROC',
     'Return on Common Equity', 'Return on Assets', 'Return on Invested Capital', 'EBITDA Margin', 'Operating Margin', 
     'Net Income Margin', 'EPS Diluted', 'Dividend per Share', 'Current Ratio', 'Quick Ratio', 
     'Return on Common Equity_roc', 'Return on Assets_roc', 'Return on Invested Capital_roc', 'EBITDA Margin_roc', 
@@ -368,10 +360,10 @@ while removal_occurred:
     # Find high correlation pairs
     high_corr = [(col1, col2) for col1 in upper_triangle.columns 
                 for col2 in upper_triangle.index 
-                if upper_triangle.loc[col2, col1] > 0.5]
+                if upper_triangle.loc[col2, col1] > 0.9]
     
     if not high_corr:
-        print("No highly correlated pairs remaining (r > 0.5).")
+        print("No highly correlated pairs remaining (r > 0.9).")
         removal_occurred = False
         break
     
@@ -434,8 +426,8 @@ importances = pd.Series(rf_pipeline.named_steps['rf'].feature_importances_, inde
 
 # Set dynamic thresholds (20% of max importance and absolute minimum)
 max_importance = importances.max()
-relative_threshold = max_importance * 0.2
-absolute_threshold = 0.2  # Hard minimum regardless of max
+relative_threshold = max_importance * 0.1
+absolute_threshold = 0.1  # Hard minimum regardless of max
 low_importance = importances[
     (importances < relative_threshold) & 
     (importances < absolute_threshold)
