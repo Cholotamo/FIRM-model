@@ -368,10 +368,10 @@ while removal_occurred:
     # Find high correlation pairs
     high_corr = [(col1, col2) for col1 in upper_triangle.columns 
                 for col2 in upper_triangle.index 
-                if upper_triangle.loc[col2, col1] > 0.7]
+                if upper_triangle.loc[col2, col1] > 0.5]
     
     if not high_corr:
-        print("No highly correlated pairs remaining (r > 0.7).")
+        print("No highly correlated pairs remaining (r > 0.5).")
         removal_occurred = False
         break
     
@@ -384,23 +384,14 @@ while removal_occurred:
             max_pair = (pair[0], pair[1])
     
     # Create a SMOTE + RF pipeline for feature importance calculation
-    smote_xgb_pipeline = ImbPipeline([
+    rf_pipeline = ImbPipeline([
         ('scaler', StandardScaler()),
-        ('xgb', XGBClassifier(
-            objective='multi:softprob',  # Changed to softprob for better weight handling
-            num_class=3,
-            random_state=42,
-            eval_metric='mlogloss',
-            tree_method='hist',
-            # Add class weighting through objective parameters
-            min_child_weight=0.01,  # Helps with class imbalance
-            max_delta_step=1        # Recommended for imbalanced classes
-        ))
+        ('rf', RandomForestClassifier(n_estimators=100, random_state=42))
 ])
 
     # During correlation removal iteration:
-    smote_xgb_pipeline.fit(X_train[features_modified], y_train_encoded)
-    importances = pd.Series(smote_xgb_pipeline.named_steps['xgb'].feature_importances_, index=features_modified)
+    rf_pipeline.fit(X_train[features_modified], y_train_encoded)
+    importances = pd.Series(rf_pipeline.named_steps['rf'].feature_importances_, index=features_modified)
     
     # Determine which feature to remove
     if importances[max_pair[0]] >= importances[max_pair[1]]:
@@ -438,13 +429,13 @@ print("\nFINAL FEATURE SET AFTER MULTICOLLINEARITY REMOVAL:", features_modified)
 print("\nREMOVING LOW-IMPORTANCE FEATURES===================================================================================================================================")
 
 # Calculate feature importances with current set
-smote_xgb_pipeline.fit(X_train[features_modified], y_train_encoded)
-importances = pd.Series(smote_xgb_pipeline.named_steps['xgb'].feature_importances_, index=features_modified)
+rf_pipeline.fit(X_train[features_modified], y_train_encoded)
+importances = pd.Series(rf_pipeline.named_steps['rf'].feature_importances_, index=features_modified)
 
-# Set dynamic thresholds (1% of max importance and absolute minimum)
+# Set dynamic thresholds (20% of max importance and absolute minimum)
 max_importance = importances.max()
-relative_threshold = max_importance * 0.1
-absolute_threshold = 0.1  # Hard minimum regardless of max
+relative_threshold = max_importance * 0.2
+absolute_threshold = 0.2  # Hard minimum regardless of max
 low_importance = importances[
     (importances < relative_threshold) & 
     (importances < absolute_threshold)
@@ -459,8 +450,8 @@ while low_importance:
     
     # Recalculate importances
     if len(features_modified) > 0:  # Prevent empty feature set
-        smote_xgb_pipeline.fit(X_train[features_modified], y_train_encoded)
-        importances = pd.Series(smote_xgb_pipeline.named_steps['xgb'].feature_importances_, index=features_modified)
+        rf_pipeline.fit(X_train[features_modified], y_train_encoded)
+        importances = pd.Series(rf_pipeline.named_steps['rf'].feature_importances_, index=features_modified)
         
         # Update low-importance list
         low_importance = importances[
