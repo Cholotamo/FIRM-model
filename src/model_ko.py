@@ -39,58 +39,22 @@ data = pd.DataFrame()
 # Iterate over CSV files and merge them
 for file in csv_files:
     file_path = os.path.join(data_folder, file)
-    if file == "pbj_hp.csv":
-        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "PBJ_Price", "PBJ_ROC"], skiprows=1)
-    elif file == "xlp_hp.csv":
-        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "XLP_Price", "XLP_ROC"], skiprows=1)
-    elif file == "CONCCONF_Daily_Filled.csv":
-        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "CONCCONF_Price", "CONCCONF_ROC"], skiprows=1) 
-    elif file == "M2_HP_Daily_Filled.csv":
-        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "M2_Price", "M2_ROC"], skiprows=1) 
-    elif file == "PCUSEQTR_HP.csv":
-        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "PCUSEQTR_Price", "PCUSEQTR_ROC"], skiprows=1)
-    elif file == "VIX_HP.csv":
-        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "VIX_Price", "VIX_ROC"], skiprows=1)
-    elif file == "KO_HP_with_signals.csv":
-        df = pd.read_csv(
-            file_path,
-            parse_dates=["Date"],
-            names=[
-                "Date", "PX_LAST_ta", "PX_BID_ta", "Price_ta", "RSI_ta", "RSI_Signal_ta", 
-                "MACD_Line_ta", "MACD_Signal_ta", "MACD_Hist_ta", "MACD_Signal_Indicator_ta", 
-                "Bollinger_SMA_ta", "Bollinger_Upper_ta", "Bollinger_Lower_ta", 
-                "Bollinger_Signal_ta", "SMA_9_ta", "SMA_20_ta", "EMA_9_ta", "EMA_20_ta", 
-                "SMA_Cross_Signal_ta", "EMA_Cross_Signal_ta", "Overall_Signal_ta"
-            ],
-            skiprows=1
-        )
-    elif file == "ko_daily_accts_payable.csv":
-        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "Accts_Payable", "Accts_Payable_ROC"], skiprows=1) 
-    elif file == "ko_daily_sharesOutstanding.csv":
-        df = pd.read_csv(file_path, parse_dates=["Date"], names=["Date", "Shares Outstanding", "Shares_Outstanding_ROC"], skiprows=1)
-    else:
-        df = pd.read_csv(file_path, parse_dates=["Date"])
+    df = pd.read_csv(file_path, parse_dates=["Date"])
     
     # Ensure 'Date' column is datetime64[ns]
     df['Date'] = pd.to_datetime(df['Date'])
+    
+    # Suffix columns with the filename (excluding the file extension)
+    file_suffix = os.path.splitext(file)[0]  # Get the filename without extension
+    df = df.rename(columns=lambda col: f"{col}__FILENAME__{file_suffix}" if col != 'Date' else col)
     
     if data.empty:
         data = df
     else:
         data = data.merge(df, on="Date", how="left")
 
-
 # Clean the data
 data = data.dropna()
-
-# Rename columns
-# Rename "Rate of Change (%)" to "Revenue_ROC", "Rate_of_Change" to "HP_ROC"
-data = data.rename(columns={
-    "Rate of Change (%)": "Revenue_ROC",
-    "Rate_of_Change": "HP_ROC"
-})
-
-# ???Reinterpret the words "buy", sell", "hold" as numerical values???
 
 # Display the merged DataFrame
 print("LOADING DATA======================================================================================================================================================")
@@ -105,106 +69,6 @@ print(data.shape)
 
 
 
-
-# ================================================================================================
-# FEATURE ENGINEERING
-# ================================================================================================
-
-# Lag features
-data['ANR_lag1'] = data['ANR'].shift(1)
-data['PX_LAST_lag1'] = data['PX_LAST'].shift(1)
-data['Revenue_lag9'] = data['Revenue'].rolling(window=9, min_periods=1).mean()  # Added min_periods
-
-# Moving averages
-data['PX_LAST_MA9'] = data['PX_LAST'].rolling(window=9, min_periods=1).mean()
-data['ANR_MA20'] = data['ANR'].rolling(window=20, min_periods=1).mean()
-
-# Relative performance (with zero-division handling)
-data['Target_Price_Gap'] = np.where(
-    data['Target Price'] != 0,
-    data['PX_LAST'] / data['Target Price'],
-    np.nan
-)
-data['Undervalued'] = (data['PX_LAST'] < data['Target Price']).astype(int)
-data['Stock_vs_PBJ'] = np.where(
-    data['PBJ_Price'] != 0,
-    data['PX_LAST'] / data['PBJ_Price'],
-    np.nan
-)
-data['Stock_vs_XLP'] = np.where(
-    data['XLP_Price'] != 0,
-    data['PX_LAST'] / data['XLP_Price'],
-    np.nan
-)
-
-# Momentum and volatility (with zero-division handling)
-data['PX_ROC_9d'] = data['PX_LAST'].pct_change(9)
-data['Revenue_ROC_20d'] = data['Revenue'].pct_change(20)
-
-# Sentiment
-data['ANR_Change_Abs'] = data['ANR Change'].abs()
-
-# Price Momentum & Volatility
-data['PX_LAST_MA21'] = data['PX_LAST'].rolling(21, min_periods=1).mean()
-data['PX_LAST_MA63'] = data['PX_LAST'].rolling(63, min_periods=1).mean()
-data['Price_Volatility_21d'] = data['PX_LAST'].rolling(21, min_periods=1).std()
-
-# Fractal Efficiency (with zero-division handling)
-diff_sum = data['PX_LAST'].rolling(21, min_periods=1).apply(lambda x: np.sum(np.abs(x.diff())))
-data['Fractal_Efficiency_21d'] = np.where(
-    diff_sum != 0,
-    (data['PX_LAST'] - data['PX_LAST'].shift(21)) / diff_sum,
-    np.nan
-)
-
-# Analyst Sentiment Dynamics
-data['ANR_3d_change'] = data['ANR'].pct_change(3)
-data['ANR_21d_zscore'] = (data['ANR'] - data['ANR'].rolling(21, min_periods=1).mean()) / data['ANR'].rolling(21, min_periods=1).std()
-data['ANR_Target_Ratio'] = np.where(
-    data['Target Price'] != 0,
-    data['ANR'] / data['Target Price'],
-    np.nan
-)
-
-# Seasonality Enhancements (with zero-division handling)
-data['Q2_Premium'] = np.where(
-    data['CQ2_Stock_Price'] != 0,
-    data['PX_LAST'] / data['CQ2_Stock_Price'],
-    np.nan
-)
-data['Q4_Discount'] = np.where(
-    data['CQ4_Stock_Price'] != 0,
-    data['PX_LAST'] / data['CQ4_Stock_Price'],
-    np.nan
-)
-data['CQ2CQ4_Ratio_MA21'] = data['CQ2_CQ4_Seasonality_Ratio'].rolling(21, min_periods=1).mean()
-data['CQ2PQ4_Ratio_ROC_14d'] = data['CQ2_PQ4_Seasonality_Ratio'].pct_change(14)
-
-# Market-Relative Strength (with zero-division handling)
-data['PBJ_RS_3d'] = np.where(
-    data['Stock_vs_PBJ'].rolling(3, min_periods=1).mean() != 0,
-    data['Stock_vs_PBJ'] / data['Stock_vs_PBJ'].rolling(3, min_periods=1).mean(),
-    np.nan
-)
-data['XLP_RS_Volatility'] = data['Stock_vs_XLP'].rolling(21, min_periods=1).std()
-
-# Risk Management Features
-data['Max_Drawdown_21d'] = data['PX_LAST'].rolling(21, min_periods=1).apply(
-    lambda x: (x.min() - x.max()) / x.max() if x.max() != 0 else np.nan
-)
-data['Recovery_Factor_63d'] = np.where(
-    data['PX_LAST'].rolling(63, min_periods=1).mean() != 0,
-    data['PX_LAST'].rolling(63, min_periods=1).max() / data['PX_LAST'].rolling(63, min_periods=1).mean(),
-    np.nan
-)
-
-# Quarterly Interaction Features (with zero-division handling)
-for q in ['Q_1', 'Q_2', 'Q_3', 'Q_4']:
-    data[f'{q}_Price_Ratio'] = np.where(
-        data[q] != 0,
-        data['PX_LAST'] / data[q],
-        np.nan
-    )
 
 # ================================================================================================
 # FINAL CLEANUP
@@ -235,12 +99,6 @@ data.ffill(inplace=True)
 # Drop any remaining NaNs
 data.dropna(inplace=True)
 
-# Display the engineered features
-print("FEATURE ENGINEERING================================================================================================================================================")
-print(data.head())
-print(data.columns)
-print(data.shape)
-
 
 
 
@@ -251,7 +109,7 @@ print(data.shape)
 
 # Target variable
 # x-day forward return
-data['Future_xd_Return'] = data['PX_LAST'].shift(-20) / data['PX_LAST'] - 1
+data['Future_xd_Return'] = data['PX_LAST__FILENAME__ko_hp'].shift(-20) / data['PX_LAST__FILENAME__ko_hp'] - 1
 data['Label'] = data['Future_xd_Return'].apply(
     lambda x: 'Buy' if x > 0.02
                 else 'Sell' if x < -0.02
@@ -259,8 +117,6 @@ data['Label'] = data['Future_xd_Return'].apply(
 )
 print("TARGET VARIABLE=====================================================================================================================================================")
 print(data['Label'].value_counts())
-# print to csv
-data.to_csv("output/feature_engineered_data.csv", index=False)
 
 
 
@@ -291,29 +147,7 @@ print(train.head())
 
 print("INITIALIZING FEATURES=====================================================================================================================================================")
 # Feature selection
-features = [
-    'CONCCONF_Price', 'CONCCONF_ROC', 'ANR', 'Target Price',
-    'ANR Classification', 'ANR Change', 'Revenue', 'Revenue_ROC', 'PX_LAST',
-    'HP_ROC', 'PX_LAST_ta', 'PX_BID_ta', 'Price_ta', 'RSI_ta',
-    'RSI_Signal_ta', 'MACD_Line_ta', 'MACD_Signal_ta', 'MACD_Hist_ta',
-    'MACD_Signal_Indicator_ta', 'Bollinger_SMA_ta', 'Bollinger_Upper_ta',
-    'Bollinger_Lower_ta', 'Bollinger_Signal_ta', 'SMA_9_ta', 'SMA_20_ta',
-    'EMA_9_ta', 'EMA_20_ta', 'SMA_Cross_Signal_ta', 'EMA_Cross_Signal_ta',
-    'Overall_Signal_ta', 'Stock Price', 'Q_2', 'Q_4',
-    'CQ2_Stock_Price', 'CQ4_Stock_Price', 'CQ2_CQ4_Seasonality_Ratio',
-    'CQ2_CQ4_Label_Daily', 'Prev_Q4_Stock_Price',
-    'CQ2_PQ4_Seasonality_Ratio', 'CQ2_PQ4_Label_Daily', 'M2_Price',
-    'M2_ROC', 'PBJ_Price', 'PBJ_ROC', 'PCUSEQTR_Price', 'PCUSEQTR_ROC',
-    'VIX_Price', 'VIX_ROC', 'XLP_Price', 'XLP_ROC',
-    'Accts_Payable', 'Accts_Payable_ROC', 'Shares Outstanding', 'Shares_Outstanding_ROC',
-    'Return on Common Equity', 'Return on Assets', 'Return on Invested Capital', 'EBITDA Margin', 'Operating Margin', 
-    'Net Income Margin', 'EPS Diluted', 'Dividend per Share', 'Current Ratio', 'Quick Ratio', 
-    'Return on Common Equity_roc', 'Return on Assets_roc', 'Return on Invested Capital_roc', 'EBITDA Margin_roc', 
-    'Operating Margin_roc', 'Net Income Margin_roc', 'EPS Diluted_roc', 'Dividend per Share_roc', 
-    'Current Ratio_roc', 'Quick Ratio_roc', 
-    'Short Interest', 'Close', 'Average Daily Volume', 'Short Interest Ratio', 
-    'Short Interest_roc', 'Average Daily Volume_roc', 'Short Interest Ratio_roc'
-]
+features = [col for col in data.columns if col not in ['Date', 'Label', 'Future_xd_Return']]
 # Excluded columns
 # (a) ANR Classification
 # This is your target variable (the label you’re trying to predict). Including it as a feature would cause data leakage since the model would "cheat" by seeing the answer during training. Remove it!
